@@ -1,6 +1,5 @@
 # Rock 'em Sock 'em Robot(s)
-### CS cs225a
-### Spring 2021
+### CS225a, Spring 2021
 ### Megan Ochalek, Sean McGrath, Valerie Pietrasz
 
 ## Currently contains
