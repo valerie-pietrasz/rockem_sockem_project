@@ -69,4 +69,4 @@ set(ROCKEM_SOCKEM_PROJECT_COMMON_LIBRARIES
 set (ROCKEM_SOCKEM_PROJECT_BINARY_DIR
 	${PROJECT_SOURCE_DIR}/bin)
 
-add_subdirectory(project_code)
+add_subdirectory(project)

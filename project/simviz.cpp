@@ -77,9 +77,7 @@ int main() {
 	graphics->getCameraPose(camera_name, camera_pos, camera_vertical, camera_lookat);
 
 	// load robots
-	Affine3d T_world_robot = Affine3d::Identity();
-	Vector3d world_gravity = Vector3d(0.0,0.0,0);
-	auto robot = new Sai2Model::Sai2Model(robot_file, false, T_world_robot, world_gravity);
+	auto robot = new Sai2Model::Sai2Model(robot_file, false);
 	robot->updateKinematics();
 
 	// load simulation world
