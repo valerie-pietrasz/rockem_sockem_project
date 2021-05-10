@@ -1,6 +1,5 @@
 # Rock 'em Sock 'em Robot(s)
-### CS cs225a
-### Spring 2021
+### CS225a, Spring 2021
 ### Megan Ochalek, Sean McGrath, Valerie Pietrasz
 
 ## Currently contains
@@ -8,12 +7,12 @@ Project starter code
 - project_code
   - controller.cpp
   - simviz.cpp
-    might want to turn off right-click to apply force
+      - might want to turn off right-click to apply force
   - toro.urdf
-    everything connects to the hip!
+      - everything connects to the hip!
   - world.urdf
 - models
   - toro
-    contains reference files for toro model
+      - contains reference files for toro model
   - boxing_ring
-    will contain reference files for the boxing environment
+      - will contain reference files for the boxing environment
