@@ -2,8 +2,13 @@
 
 <world name="demo_world" gravity="0.0 0.0 -9.81">
 
-	<robot name="toro">
-		<model dir="./resources" path="toro.urdf" name="toro" />
+	<robot name="DLR_TORO">
+		<model dir="./resources" path="toro.urdf" name="DLR_TORO" />
+	</robot>
+
+	<robot name="punching_bag">
+		<model dir="./resources" path="punching_bag.urdf" name="punching_bag" />
+		<origin xyz="0 0 0" />
 	</robot>
 
 	<light name="light1" type="directional">
@@ -17,9 +22,9 @@
 	</light>
 
 	<camera name="camera_fixed">
-		<position xyz="2.0 -0.8 1.0" />
+		<position xyz="1.0 2.0 1.0" />
 		<vertical xyz="0.0 0.0 1.0" />
-		<lookat xyz="0.0 0.0 0.0" />
+		<lookat xyz="0.5 0.0 0.0" />
 	</camera>
 
 </world>

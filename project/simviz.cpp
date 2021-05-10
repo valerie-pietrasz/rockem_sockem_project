@@ -22,7 +22,9 @@ using namespace Eigen;
 
 const string world_file = "./resources/world.urdf";
 const string robot_file = "./resources/toro.urdf";
-const string robot_name = "toro";
+const string bag_file = "./resources/punching_bag.urdf";
+const string robot_name = "DLR_TORO";
+const string bag_name = "punching_bag";
 const string camera_name = "camera_fixed";
 
 // redis keys:
@@ -78,6 +80,9 @@ int main() {
 
 	// load robots
 	auto robot = new Sai2Model::Sai2Model(robot_file, false);
+	robot->updateKinematics();
+	// load robots
+	auto punching_bag = new Sai2Model::Sai2Model(bag_file, false);
 	robot->updateKinematics();
 
 	// load simulation world
