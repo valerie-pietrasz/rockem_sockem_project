@@ -27,6 +27,8 @@ const string robot_name = "DLR_TORO";
 const string bag_name = "punching_bag";
 const string camera_name = "camera_fixed";
 
+const int timeDilationFactor = 3;
+
 // redis keys:
 // - write:
 const std::string JOINT_ANGLES_KEY = "sai2::cs225a::project::sensors::q";
@@ -301,7 +303,7 @@ void simulation(Sai2Model::Sai2Model* robot, Simulation::Sai2Simulation* sim, UI
 		// integrate forward
 		double curr_time = timer.elapsedTime();
 		double loop_dt = curr_time - last_time;
-		sim->integrate(loop_dt);
+		sim->integrate(loop_dt/timeDilationFactor);
 
 		// read joint positions, velocities, update model
 		sim->getJointPositions(robot_name, robot->_q);
