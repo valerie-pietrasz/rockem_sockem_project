@@ -115,7 +115,7 @@ int main() {
 	Matrix3d x_ori;
 	robot->rotationInWorld(x_ori, control_link);
 	// posori_task_footR->_desired_position = x_pos;
-	posori_task_footR->_desired_position = Vector3d(-0.296713, -0.268187, 0);//-1.065379);
+	posori_task_footR->_desired_position = Vector3d(-0.296713, -0.268187, -1.065379);
 	posori_task_footR->_desired_orientation = x_ori; 
 
 	// pose task for left foot 
@@ -140,7 +140,7 @@ int main() {
 	robot->positionInWorld(x_pos, control_link, control_point);
 	robot->rotationInWorld(x_ori, control_link);
 	// posori_task_footL->_desired_position = x_pos;
-	posori_task_footL->_desired_position = Vector3d(0.282772, 0.269314, 0);//-1.065379);
+	posori_task_footL->_desired_position = Vector3d(0.282772, 0.269314, -1.065379);
 	posori_task_footL->_desired_orientation = x_ori; 
 
 	// pose task for right hand 
@@ -247,6 +247,9 @@ int main() {
 
 	VectorXd q_desired = q_init_desired;
 
+	//Overactuation
+	q_desired[2] = -0.135069;
+
 	//Right Leg
 	q_desired[6] = -M_PI/16;
 	q_desired[7] = 0;
@@ -343,7 +346,9 @@ int main() {
 		// command_torques = posori_task_torques_footR + posori_task_torques_footL + \
 		// 					posori_task_torques_handR + posori_task_torques_handL + \
 		// 					posori_task_torques_head + joint_task_torques;  // gravity compensation handled in sim
-		command_torques = joint_task_torques;
+		command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
+		// command_torques = joint_task_torques;
+
 		// send to redis
 		redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
 
@@ -363,6 +368,8 @@ int main() {
 		redis_client.setEigenMatrixJSON(OPERATIONAL_POSITION_LF, x_pos_lf.transpose());
 		redis_client.setEigenMatrixJSON(OPERATIONAL_ROTATION_RF, x_ori_rf.transpose());
 		redis_client.setEigenMatrixJSON(OPERATIONAL_ROTATION_LF, x_ori_lf.transpose());
+
+		// std::cout << "Z actuation position : " << q_desired[2] << "\n";
 
 		//increment
 		controller_counter++;

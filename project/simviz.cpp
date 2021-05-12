@@ -27,7 +27,7 @@ const string robot_name = "DLR_TORO";
 const string bag_name = "punching_bag";
 const string camera_name = "camera_fixed";
 
-const int timeDilationFactor = 3;
+const int timeDilationFactor = 10;
 
 // redis keys:
 // - write:
