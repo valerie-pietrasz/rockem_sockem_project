@@ -1,5 +1,5 @@
 // This example application loads a URDF world file and simulates two robots
-// with physics and contact in a Dynamics3D virtual world. A graphics model of it is also shown using 
+// with physics and contact in a Dynamics3D virtual world. A graphics model of it is also shown using
 // Chai3D.
 
 #include "Sai2Model.h"
@@ -18,7 +18,8 @@ void sighandler(int sig)
 using namespace std;
 using namespace Eigen;
 
-const string robot_file = "./resources/toro.urdf";	
+const string robot_file = "./resources/toro.urdf";
+const string punching_bag_file = "./resources/punching_bag.urdf";
 
 #define JOINT_CONTROLLER      0
 #define POSORI_CONTROLLER     1
@@ -91,7 +92,7 @@ int main() {
 	robot->positionInWorld(x_pos_hip_init, hip_control_link, hip_control_point);
 
 
-	// pose task for right foot 
+	// pose task for right foot
 	string control_link = "RL_foot";
 	Vector3d control_point = Vector3d(0,0,0);
 	auto posori_task_footR = new Sai2Primitives::PosOriTask(robot, control_link, control_point);
@@ -102,7 +103,7 @@ int main() {
 	// #else
 	// 	posori_task_footR->_use_velocity_saturation_flag = true;
 	// #endif
-	
+
 	VectorXd posori_task_torques_footR = VectorXd::Zero(dof);
 	posori_task_footR->_kp_pos = kp_foot;
 	posori_task_footR->_kv_pos = kv_foot;
@@ -116,9 +117,9 @@ int main() {
 	robot->rotationInWorld(x_ori, control_link);
 	// posori_task_footR->_desired_position = x_pos;
 	posori_task_footR->_desired_position = Vector3d(-0.296713, -0.268187, -1.065379);
-	posori_task_footR->_desired_orientation = x_ori; 
+	posori_task_footR->_desired_orientation = x_ori;
 
-	// pose task for left foot 
+	// pose task for left foot
 	control_link = "LL_foot";
 	control_point = Vector3d(0,0,0);
 	auto posori_task_footL = new Sai2Primitives::PosOriTask(robot, control_link, control_point);
@@ -129,7 +130,7 @@ int main() {
 	// #else
 	// 	posori_task_footL->_use_velocity_saturation_flag = true;
 	// #endif
-	
+
 	VectorXd posori_task_torques_footL = VectorXd::Zero(dof);
 	posori_task_footL->_kp_pos = kp_foot;
 	posori_task_footL->_kv_pos = kv_foot;
@@ -141,9 +142,9 @@ int main() {
 	robot->rotationInWorld(x_ori, control_link);
 	// posori_task_footL->_desired_position = x_pos;
 	posori_task_footL->_desired_position = Vector3d(0.282772, 0.269314, -1.065379);
-	posori_task_footL->_desired_orientation = x_ori; 
+	posori_task_footL->_desired_orientation = x_ori;
 
-	// pose task for right hand 
+	// pose task for right hand
 	control_link = "ra_link6";
 	control_point = Vector3d(0,0,0);
 	auto posori_task_handR = new Sai2Primitives::PosOriTask(robot, control_link, control_point);
@@ -154,21 +155,21 @@ int main() {
 	#else
 		posori_task_handR->_use_velocity_saturation_flag = true;
 	#endif
-	
+
 	VectorXd posori_task_torques_handR = VectorXd::Zero(dof);
 	posori_task_handR->_kp_pos = kp_hand;
 	posori_task_handR->_kv_pos = kv_hand;
 	posori_task_handR->_kp_ori = kp_hand;
 	posori_task_handR->_kv_ori = kv_hand;
 
-	// set two goal positions/orientations 
+	// set two goal positions/orientations
 	robot->positionInWorld(x_pos, control_link, control_point);
 	robot->rotationInWorld(x_ori, control_link);
 	// posori_task_handR->_desired_position = x_pos + Vector3d(0.5, -0.2, 0.8);
 	posori_task_handR->_desired_position = x_pos_hip_init + Vector3d(0.1, -0.1, 0.1);
-	posori_task_handR->_desired_orientation = AngleAxisd(M_PI/4, Vector3d::UnitZ()).toRotationMatrix() * x_ori; 
+	posori_task_handR->_desired_orientation = AngleAxisd(M_PI/4, Vector3d::UnitZ()).toRotationMatrix() * x_ori;
 	//posori_task_handR->_desired_orientation = AngleAxisd(M_PI/2, Vector3d::UnitX()).toRotationMatrix() * \
-	 											AngleAxisd(-M_PI/2, Vector3d::UnitY()).toRotationMatrix() * x_ori; 
+	 											AngleAxisd(-M_PI/2, Vector3d::UnitY()).toRotationMatrix() * x_ori;
 
 	// pose task for left hand
 	control_link = "la_link6";
@@ -181,22 +182,22 @@ int main() {
 	#else
 		posori_task_handL->_use_velocity_saturation_flag = true;
 	#endif
-	
+
 	VectorXd posori_task_torques_handL = VectorXd::Zero(dof);
 	posori_task_handL->_kp_pos = kp_hand;
 	posori_task_handL->_kv_pos = kv_hand;
 	posori_task_handL->_kp_ori = kp_hand;
 	posori_task_handL->_kv_ori = kv_hand;
 
-	// set two goal positions/orientations 
+	// set two goal positions/orientations
 	robot->positionInWorld(x_pos, control_link, control_point);
 	robot->rotationInWorld(x_ori, control_link);
 	// posori_task_handL->_desired_position = x_pos + Vector3d(0.5, 0.2, 0.8);
 
 	posori_task_handL->_desired_position = x_pos_hip_init + Vector3d(1, 0.5, 0.5);
-	posori_task_handL->_desired_orientation = AngleAxisd(-M_PI/4, Vector3d::UnitZ()).toRotationMatrix() * x_ori; 
+	posori_task_handL->_desired_orientation = AngleAxisd(-M_PI/4, Vector3d::UnitZ()).toRotationMatrix() * x_ori;
 	// posori_task_handR->_desired_orientation = AngleAxisd(M_PI/2, Vector3d::UnitX()).toRotationMatrix() * \
-	// 											AngleAxisd(-M_PI/2, Vector3d::UnitY()).toRotationMatrix() * x_ori; 
+	// 											AngleAxisd(-M_PI/2, Vector3d::UnitY()).toRotationMatrix() * x_ori;
 
 
 	// pose task for head
@@ -210,20 +211,20 @@ int main() {
 	#else
 		posori_task_head->_use_velocity_saturation_flag = true;
 	#endif
-	
+
 	VectorXd posori_task_torques_head = VectorXd::Zero(dof);
 	posori_task_head->_kp_pos = kp_head;
 	posori_task_head->_kv_pos = kv_head;
 	posori_task_head->_kp_ori = kp_head;
 	posori_task_head->_kv_ori = kv_head;
 
-	// set two goal positions/orientations 
+	// set two goal positions/orientations
 	robot->positionInWorld(x_pos, control_link, control_point);
 	robot->rotationInWorld(x_ori, control_link);
 	posori_task_head->_desired_position = x_pos;
-	posori_task_head->_desired_orientation = x_ori; 
+	posori_task_head->_desired_orientation = x_ori;
 	// posori_task_handR->_desired_orientation = AngleAxisd(M_PI/2, Vector3d::UnitX()).toRotationMatrix() * \
-	// 											AngleAxisd(-M_PI/2, Vector3d::UnitY()).toRotationMatrix() * x_ori; 
+	// 											AngleAxisd(-M_PI/2, Vector3d::UnitY()).toRotationMatrix() * x_ori;
 
 	// joint task
 	auto joint_task = new Sai2Primitives::JointTask(robot);
@@ -239,7 +240,7 @@ int main() {
 	joint_task->_kp = 100.0;
 	joint_task->_kv = 20.0;
 
-	// Record initial joint posture 
+	// Record initial joint posture
 
 	VectorXd q_init_desired = robot->_q;
 
@@ -294,7 +295,7 @@ int main() {
 	// create a timer
 	LoopTimer timer;
 	timer.initializeTimer();
-	timer.setLoopFrequency(200); 
+	timer.setLoopFrequency(200);
 	double start_time = timer.elapsedTime(); //secs
 	bool fTimerDidSleep = true;
 
@@ -309,8 +310,8 @@ int main() {
 
 		// update model
 		robot->updateModel();
-		
-		// calculate torques to fix the feet 
+
+		// calculate torques to fix the feet
 		N_prec.setIdentity();
 		posori_task_footR->updateTaskModel(N_prec);
 		posori_task_footR->computeTorques(posori_task_torques_footR);
@@ -342,7 +343,7 @@ int main() {
 		// calculate gravity torques (if needed)
 		robot->gravityVector(g);
 
-		// calculate torques 
+		// calculate torques
 		// command_torques = posori_task_torques_footR + posori_task_torques_footL + \
 		// 					posori_task_torques_handR + posori_task_torques_handL + \
 		// 					posori_task_torques_head + joint_task_torques;  // gravity compensation handled in sim

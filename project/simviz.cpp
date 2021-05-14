@@ -20,14 +20,18 @@ void sighandler(int){fSimulationRunning = false;}
 using namespace std;
 using namespace Eigen;
 
+const double clock_delay_factor = 10;
+
 const string world_file = "./resources/world.urdf";
 const string robot_file = "./resources/toro.urdf";
 const string bag_file = "./resources/punching_bag.urdf";
+const string env_file = "./resources/environment.urdf";
 const string robot_name = "DLR_TORO";
 const string bag_name = "punching_bag";
+const string env_name = "env";
 const string camera_name = "camera_fixed";
 
-const int timeDilationFactor = 10;
+const int timeDilationFactor = 20;
 
 // redis keys:
 // - write:
@@ -83,9 +87,11 @@ int main() {
 	// load robots
 	auto robot = new Sai2Model::Sai2Model(robot_file, false);
 	robot->updateKinematics();
-	// load robots
+	// load world
 	auto punching_bag = new Sai2Model::Sai2Model(bag_file, false);
-	robot->updateKinematics();
+	punching_bag->updateKinematics();
+	auto env = new Sai2Model::Sai2Model(env_file, false);
+	env->updateKinematics();
 
 	// load simulation world
 	auto sim = new Simulation::Sai2Simulation(world_file, false);

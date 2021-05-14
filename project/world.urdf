@@ -11,6 +11,11 @@
 		<origin xyz="0 0 0" />
 	</robot>
 
+	<robot name="env">
+		<model dir="./resources" path="environment.urdf" name="env" />
+		<origin xyz="0 0 0" />
+	</robot>
+
 	<light name="light1" type="directional">
 		<position xyz="2.0 2.0 2.0" />
 		<lookat xyz="0.0 0.0 0.0" />
@@ -22,8 +27,8 @@
 	</light>
 
 	<camera name="camera_fixed">
-		<position xyz="1.0 2.0 1.0" />
-		<vertical xyz="0.0 0.0 1.0" />
+		<position xyz="2.0 2.0 -0.5" />
+		<vertical xyz="0.0 0.0 2.0" />
 		<lookat xyz="0.5 0.0 0.0" />
 	</camera>
 
