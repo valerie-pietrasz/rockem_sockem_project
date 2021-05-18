@@ -19,7 +19,7 @@ using namespace std;
 using namespace Eigen;
 
 const string robot_file = "./resources/toro.urdf";
-const string punching_bag_file = "./resources/punching_bag.urdf";
+const string bag_file = "./resources/punching_bag.urdf";
 
 #define JOINT_CONTROLLER      0
 #define POSORI_CONTROLLER     1
@@ -30,7 +30,7 @@ int state = JOINT_CONTROLLER;
 // - read:
 const std::string JOINT_ANGLES_KEY = "sai2::cs225a::project::sensors::q";
 const std::string JOINT_VELOCITIES_KEY = "sai2::cs225a::project::sensors::dq";
-const std::string JOINT_TORQUES_SENSED_KEY;
+const std::string JOINT_TORQUES_SENSED_KEY; // Need to set in order to use
 // - write
 const std::string JOINT_TORQUES_COMMANDED_KEY = "sai2::cs225a::project::actuators::fgc";
 const std::string PUNCHING_BAG_COMMANDED_KEY = "sai2::cs225a::project::actuators::bag";
@@ -50,7 +50,7 @@ const bool inertia_regularization = true;
 
 // Function prototypes //
 VectorXd orthodox_posture(VectorXd q_desired);
-Vector3d perturb_bag(Vector3d q_bag);
+Vector3d perturb_bag(Vector3d q_);
 
 //--------------------------------------- Main ---------------------------------------//
 //--------------------------------------- Main ---------------------------------------//
@@ -73,11 +73,10 @@ int main() {
 	VectorXd initial_q = robot->_q;
 	robot->updateModel();
 
-	auto bag = new Sai2Model::Sai2Model(punching_bag_file, false);
-	// Vector3d q_bag = Vector3d(M_PI/2, 0, 0);
-	// bag->_q = q_bag;
+	auto bag = new Sai2Model::Sai2Model(bag_file, false);
+	Vector3d bag_torques = Vector3d(0, 0, 0);
 	bag->updateModel();
-	// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, q_bag);
+	// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, bag_torques); // Don't know why I thought I needed this line? -- Val
 
 	// prepare controller
 	int dof = robot->dof();
@@ -318,8 +317,17 @@ int main() {
 		command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
 		// command_torques = joint_task_torques;
 
+		// PUNCHING BAG //
+		// if needed, read bag state from redis, like so:
+		// robot->_q = redis_client.getEigenMatrixJSON(JOINT_ANGLES_KEY);
+
+		bag->updateModel();
+		// if(controller_counter == 10)
+		// 	bag_torques = perturb_bag(bag_torques);
+
 		// send to redis
 		redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
+		redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, bag_torques);
 
 		//test tracking foot position with only joint task torques to choose posori targets
 		Vector3d x_pos_rf;
@@ -403,10 +411,10 @@ VectorXd orthodox_posture(VectorXd q_desired) {
 	return q_desired;
 }
 
-Vector3d perturb_bag(Vector3d q_bag) {
+Vector3d perturb_bag(Vector3d bag_torques) {
 
-	q_bag[1] = M_PI/2;
+	bag_torques[1] = 1;
 
-	return q_bag;
+	return bag_torques;
 
 }
