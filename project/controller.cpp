@@ -74,10 +74,10 @@ int main() {
 	robot->updateModel();
 
 	auto bag = new Sai2Model::Sai2Model(punching_bag_file, false);
-	Vector3d q_bag = Vector3d(M_PI/2, 0, 0);
-	bag->_q = q_bag;
+	// Vector3d q_bag = Vector3d(M_PI/2, 0, 0);
+	// bag->_q = q_bag;
 	bag->updateModel();
-	redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, q_bag);
+	// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, q_bag);
 
 	// prepare controller
 	int dof = robot->dof();
