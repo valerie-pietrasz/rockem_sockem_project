@@ -28,89 +28,35 @@ int state = JOINT_CONTROLLER;
 
 // redis keys:
 // - read:
-std::string JOINT_ANGLES_KEY;
-std::string JOINT_VELOCITIES_KEY;
-std::string JOINT_TORQUES_SENSED_KEY;
+const std::string JOINT_ANGLES_KEY = "sai2::cs225a::project::sensors::q";
+const std::string JOINT_VELOCITIES_KEY = "sai2::cs225a::project::sensors::dq";
+const std::string JOINT_TORQUES_SENSED_KEY;
 // - write
-std::string JOINT_TORQUES_COMMANDED_KEY;
-std::string OPERATIONAL_POSITION_RF;
-std::string OPERATIONAL_POSITION_LF;
-std::string OPERATIONAL_ROTATION_RF;
-std::string OPERATIONAL_ROTATION_LF;
+const std::string JOINT_TORQUES_COMMANDED_KEY = "sai2::cs225a::project::actuators::fgc";
+const std::string PUNCHING_BAG_COMMANDED_KEY = "sai2::cs225a::project::actuators::bag";
+const std::string OPERATIONAL_POSITION_RF = "sai2::cs225a::project::operational_position_RF";
+const std::string OPERATIONAL_POSITION_LF = "sai2::cs225a::project::operational_position_LF";
+const std::string OPERATIONAL_ROTATION_RF = "sai2::cs225a::project::operational_rotation_RF";
+const std::string OPERATIONAL_ROTATION_LF = "sai2::cs225a::project::operational_rotation_LF";
 
 // - model
-std::string MASSMATRIX_KEY;
-std::string CORIOLIS_KEY;
-std::string ROBOT_GRAVITY_KEY;
+const std::string MASSMATRIX_KEY;
+const std::string CORIOLIS_KEY;
+const std::string ROBOT_GRAVITY_KEY;
 
 unsigned long long controller_counter = 0;
 
 const bool inertia_regularization = true;
 
-// Functions //
-// Functions //
-// Functions //
+// Function prototypes //
+VectorXd orthodox_posture(VectorXd q_desired);
+Vector3d perturb_bag(Vector3d q_bag);
 
-VectorXd orthodox_posture(VectorXd q_desired) {
-
-	// Overactuation
-	q_desired[2] = -0.135069;
-	q_desired[5] = 0;
-
-	// Right Leg
-	q_desired[6] = -M_PI/16;
-	q_desired[7] = 0;
-	q_desired[8] = 0;
-	q_desired[9] = M_PI/4;
-	q_desired[10] = M_PI/16;
-	q_desired[11] = -M_PI/4;
-
-	// Left Leg
-	q_desired[12] = M_PI/16;
-	q_desired[13] = -M_PI/4;
-	q_desired[14] = 0;
-	q_desired[15] = M_PI/4;
-	q_desired[16] = -M_PI/16;
-	q_desired[17] = 0;
-
-	// Trunk
-	q_desired[18] = -M_PI/6;
-
-	// Right Arm
-	q_desired[19] = M_PI/6;
-	q_desired[20] = M_PI/6;
-	q_desired[21] = 0;
-	q_desired[22] = 3*M_PI/4;;
-	q_desired[23] = 0;
-	q_desired[24] = 0;
-
-	// Left Arm
-	q_desired[25] = M_PI/6;
-	q_desired[26] = M_PI/6;
-	q_desired[27] = 0;
-	q_desired[28] = 3*M_PI/4;;
-	q_desired[29] = 0;
-	q_desired[30] = 0;
-
-	// Head
-	q_desired[31] = M_PI/6;
-
-	return q_desired;
-}
-
-// Main //
-// Main //
-// Main //
+//--------------------------------------- Main ---------------------------------------//
+//--------------------------------------- Main ---------------------------------------//
+//--------------------------------------- Main ---------------------------------------//
 
 int main() {
-
-	JOINT_ANGLES_KEY = "sai2::cs225a::project::sensors::q";
-	JOINT_VELOCITIES_KEY = "sai2::cs225a::project::sensors::dq";
-	JOINT_TORQUES_COMMANDED_KEY = "sai2::cs225a::project::actuators::fgc";
-	OPERATIONAL_POSITION_RF = "sai2::cs225a::project::operational_position_RF";
-	OPERATIONAL_POSITION_LF = "sai2::cs225a::project::operational_position_LF";
-	OPERATIONAL_ROTATION_RF = "sai2::cs225a::project::operational_rotation_RF";
-	OPERATIONAL_ROTATION_LF = "sai2::cs225a::project::operational_rotation_LF";
 
 	// start redis client
 	auto redis_client = RedisClient();
@@ -126,6 +72,12 @@ int main() {
 	robot->_q = redis_client.getEigenMatrixJSON(JOINT_ANGLES_KEY);
 	VectorXd initial_q = robot->_q;
 	robot->updateModel();
+
+	auto bag = new Sai2Model::Sai2Model(punching_bag_file, false);
+	Vector3d q_bag = Vector3d(M_PI/2, 0, 0);
+	bag->_q = q_bag;
+	bag->updateModel();
+	redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, q_bag);
 
 	// prepare controller
 	int dof = robot->dof();
@@ -145,7 +97,6 @@ int main() {
 	Vector3d x_pos_hip_init;
 	Vector3d hip_control_point = Vector3d(0,0,0);
 	robot->positionInWorld(x_pos_hip_init, hip_control_link, hip_control_point);
-
 
 	// pose task for right foot
 	string control_link = "RL_foot";
@@ -370,7 +321,6 @@ int main() {
 		// send to redis
 		redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
 
-
 		//test tracking foot position with only joint task torques to choose posori targets
 		Vector3d x_pos_rf;
 		robot->positionInWorld(x_pos_rf, "RL_foot", Vector3d(0,0,0));
@@ -400,4 +350,63 @@ int main() {
     std::cout << "Controller Loop frequency : " << timer.elapsedCycles()/end_time << "Hz\n";
 
 	return 0;
+}
+
+//------------------------------- Functions -------------------------------//
+//------------------------------- Functions -------------------------------//
+//------------------------------- Functions -------------------------------//
+
+VectorXd orthodox_posture(VectorXd q_desired) {
+
+	// Overactuation
+	q_desired[2] = -0.135069;
+	q_desired[5] = 0;
+
+	// Right Leg
+	q_desired[6] = -M_PI/16;
+	q_desired[7] = 0;
+	q_desired[8] = 0;
+	q_desired[9] = M_PI/4;
+	q_desired[10] = M_PI/16;
+	q_desired[11] = -M_PI/4;
+
+	// Left Leg
+	q_desired[12] = M_PI/16;
+	q_desired[13] = -M_PI/4;
+	q_desired[14] = 0;
+	q_desired[15] = M_PI/4;
+	q_desired[16] = -M_PI/16;
+	q_desired[17] = 0;
+
+	// Trunk
+	q_desired[18] = -M_PI/6;
+
+	// Right Arm
+	q_desired[19] = M_PI/6;
+	q_desired[20] = M_PI/6;
+	q_desired[21] = 0;
+	q_desired[22] = 3*M_PI/4;;
+	q_desired[23] = 0;
+	q_desired[24] = 0;
+
+	// Left Arm
+	q_desired[25] = M_PI/6;
+	q_desired[26] = M_PI/6;
+	q_desired[27] = 0;
+	q_desired[28] = 3*M_PI/4;;
+	q_desired[29] = 0;
+	q_desired[30] = 0;
+
+	// Head
+	q_desired[31] = M_PI/6;
+
+	return q_desired;
+}
+
+Vector3d perturb_bag(Vector3d q_bag) {
+
+	q_bag[1] = M_PI/2;
+
+	return q_bag;
+
 }

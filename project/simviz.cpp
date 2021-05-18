@@ -28,7 +28,7 @@ const string bag_file = "./resources/punching_bag.urdf";
 const string env_file = "./resources/environment.urdf";
 const string robot_name = "DLR_TORO";
 const string bag_name = "punching_bag";
-const string env_name = "env";
+// const string env_name = "env";
 const string camera_name = "camera_fixed";
 
 const int timeDilationFactor = 20;
@@ -39,11 +39,12 @@ const std::string JOINT_ANGLES_KEY = "sai2::cs225a::project::sensors::q";
 const std::string JOINT_VELOCITIES_KEY = "sai2::cs225a::project::sensors::dq";
 // - read
 const std::string JOINT_TORQUES_COMMANDED_KEY = "sai2::cs225a::project::actuators::fgc";
+const std::string PUNCHING_BAG_COMMANDED_KEY = "sai2::cs225a::project::actuators::bag";
 
 RedisClient redis_client;
 
 // simulation function prototype
-void simulation(Sai2Model::Sai2Model* robot, Simulation::Sai2Simulation* sim, UIForceWidget *ui_force_widget);
+void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* punching_bag, Simulation::Sai2Simulation* sim, UIForceWidget *ui_force_widget);
 
 // callback to print glfw errors
 void glfwError(int error, const char* description);
@@ -87,9 +88,10 @@ int main() {
 	// load robots
 	auto robot = new Sai2Model::Sai2Model(robot_file, false);
 	robot->updateKinematics();
-	// load world
+	// load punching bag
 	auto punching_bag = new Sai2Model::Sai2Model(bag_file, false);
 	punching_bag->updateKinematics();
+	// load world
 	auto env = new Sai2Model::Sai2Model(env_file, false);
 	env->updateKinematics();
 
@@ -102,6 +104,10 @@ int main() {
 	sim->getJointPositions(robot_name, robot->_q);
 	sim->getJointVelocities(robot_name, robot->_dq);
 	robot->updateKinematics();
+
+	sim->getJointPositions(bag_name, punching_bag->_q);
+	sim->getJointVelocities(bag_name, punching_bag->_dq);
+	punching_bag->updateKinematics();
 
 	/*------- Set up visualization -------*/
 	// set up error callback
@@ -145,7 +151,7 @@ int main() {
 	glewInitialize();
 
 	fSimulationRunning = true;
-	thread sim_thread(simulation, robot, sim, ui_force_widget);
+	thread sim_thread(simulation, robot, punching_bag, sim, ui_force_widget);
 
 	// while window is open:
 	while (!glfwWindowShouldClose(window) && fSimulationRunning)
@@ -267,11 +273,16 @@ int main() {
 }
 
 //------------------------------------------------------------------------------
-void simulation(Sai2Model::Sai2Model* robot, Simulation::Sai2Simulation* sim, UIForceWidget *ui_force_widget) {
+void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* punching_bag, Simulation::Sai2Simulation* sim, UIForceWidget *ui_force_widget) {
 
 	int dof = robot->dof();
 	VectorXd command_torques = VectorXd::Zero(dof);
+
+	VectorXd punching_bag_q = Vector3d(M_PI/2,0,0);
+	sim->setJointPositions(bag_name, punching_bag_q);
+
 	redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
+	redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, punching_bag_q);
 
 	// create a timer
 	LoopTimer timer;
@@ -297,14 +308,20 @@ void simulation(Sai2Model::Sai2Model* robot, Simulation::Sai2Simulation* sim, UI
 
 		// read arm torques from redis and apply to simulated robot
 		command_torques = redis_client.getEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY);
+		// read bag forces? positions? idk here. VALERIE TODO
+		// punching_bag_q = redis_client.getEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY);
 
 		ui_force_widget->getUIForce(ui_force);
 		ui_force_widget->getUIJointTorques(ui_force_command_torques);
 
-		if (fRobotLinkSelect)
+		if (fRobotLinkSelect) {
 			sim->setJointTorques(robot_name, command_torques + ui_force_command_torques + g);
-		else
+			sim->setJointTorques(bag_name, ui_force_command_torques + g);
+		}
+		else {
 			sim->setJointTorques(robot_name, command_torques + g);
+			sim->setJointTorques(bag_name, ui_force_command_torques + g);
+		}
 
 		// integrate forward
 		double curr_time = timer.elapsedTime();
@@ -315,6 +332,7 @@ void simulation(Sai2Model::Sai2Model* robot, Simulation::Sai2Simulation* sim, UI
 		sim->getJointPositions(robot_name, robot->_q);
 		sim->getJointVelocities(robot_name, robot->_dq);
 		robot->updateModel();
+		punching_bag->updateModel();
 
 		// write new robot state to redis
 		redis_client.setEigenMatrixJSON(JOINT_ANGLES_KEY, robot->_q);
