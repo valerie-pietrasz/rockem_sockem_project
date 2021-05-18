@@ -63,38 +63,36 @@
           <mesh filename="../../../model/boxing_ring/meshes/punchbag_blender.obj"/>
         </geometry>
       </visual>
-      <!-- <collision>
+      <collision>
         <geometry>
-          <mesh filename="../../../model/panda/meshes/collision/link3.obj"/>
+          <mesh filename="../../../model/boxing_ring/meshes/collision/punchbag_collision.obj"/>
         </geometry>
-      </collision> -->
+      </collision>
     </link>
 
     <joint name="joint1" type="revolute">
-      <safety_controller k_position="100.0" k_velocity="40.0" soft_lower_limit="-2.8973" soft_upper_limit="2.8973"/>
+      <safety_controller k_position="100.0" k_velocity="50.0" soft_lower_limit="-1.57079632679" soft_upper_limit="1.57079632679"/>
       <origin rpy="1.57079632679 0 1.57079632679" xyz="0.75 0 0.7"/>
       <parent link="link0"/>
       <child link="link1"/>
       <axis xyz="0 0 1"/>
-      <calibration falling="-80.0" />
-      <limit effort="87" lower="-2.8973" upper="2.8973" velocity="2.1750"/>
+      <limit effort="100" lower="-3.14159265359" upper="3.14159265359" velocity="3.14159265359"/>
     </joint>
     <joint name="joint2" type="revolute">
-      <safety_controller k_position="100.0" k_velocity="40.0" soft_lower_limit="-1.7628" soft_upper_limit="1.7628"/>
+      <safety_controller k_position="100.0" k_velocity="50.0" soft_lower_limit="-1.57079632679" soft_upper_limit="1.57079632679"/>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <parent link="link1"/>
       <child link="link2"/>
       <axis xyz="0 0 1"/>
-      <calibration falling="-45.0" />
-      <limit effort="87" lower="-1.7628" upper="1.7628" velocity="2.1750"/>
+      <limit effort="100" lower="-3.14159265359" upper="3.14159265359" velocity="3.14159265359"/>
     </joint>
     <joint name="joint3" type="revolute">
-      <safety_controller k_position="100.0" k_velocity="40.0" soft_lower_limit="-2.8973" soft_upper_limit="2.8973"/>
+      <safety_controller k_position="100.0" k_velocity="50.0" soft_lower_limit="-1.57079632679" soft_upper_limit="1.57079632679"/>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <parent link="link2"/>
       <child link="bag"/>
       <axis xyz="0 0 1"/>
-      <limit effort="87" lower="-2.8973" upper="2.8973" velocity="2.1750"/>
+      <limit effort="100" lower="-3.14159265359" upper="3.14159265359" velocity="3.14159265359"/>
     </joint>
 
 </robot>
