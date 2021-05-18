@@ -327,7 +327,7 @@ int main() {
 
 		// send to redis
 		redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
-		redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, bag_torques);
+		redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, bag_torques);
 
 		//test tracking foot position with only joint task torques to choose posori targets
 		Vector3d x_pos_rf;
