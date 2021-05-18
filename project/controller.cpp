@@ -47,6 +47,61 @@ unsigned long long controller_counter = 0;
 
 const bool inertia_regularization = true;
 
+// Functions //
+// Functions //
+// Functions //
+
+VectorXd orthodox_posture(VectorXd q_desired) {
+
+	// Overactuation
+	q_desired[2] = -0.135069;
+	q_desired[5] = 0;
+
+	// Right Leg
+	q_desired[6] = -M_PI/16;
+	q_desired[7] = 0;
+	q_desired[8] = 0;
+	q_desired[9] = M_PI/4;
+	q_desired[10] = M_PI/16;
+	q_desired[11] = -M_PI/4;
+
+	// Left Leg
+	q_desired[12] = M_PI/16;
+	q_desired[13] = -M_PI/4;
+	q_desired[14] = 0;
+	q_desired[15] = M_PI/4;
+	q_desired[16] = -M_PI/16;
+	q_desired[17] = 0;
+
+	// Trunk
+	q_desired[18] = -M_PI/6;
+
+	// Right Arm
+	q_desired[19] = M_PI/6;
+	q_desired[20] = M_PI/6;
+	q_desired[21] = 0;
+	q_desired[22] = 3*M_PI/4;;
+	q_desired[23] = 0;
+	q_desired[24] = 0;
+
+	// Left Arm
+	q_desired[25] = M_PI/6;
+	q_desired[26] = M_PI/6;
+	q_desired[27] = 0;
+	q_desired[28] = 3*M_PI/4;;
+	q_desired[29] = 0;
+	q_desired[30] = 0;
+
+	// Head
+	q_desired[31] = M_PI/6;
+
+	return q_desired;
+}
+
+// Main //
+// Main //
+// Main //
+
 int main() {
 
 	JOINT_ANGLES_KEY = "sai2::cs225a::project::sensors::q";
@@ -77,7 +132,7 @@ int main() {
 	VectorXd command_torques = VectorXd::Zero(dof);
 	MatrixXd N_prec = MatrixXd::Identity(dof, dof);
 
-	//Edit kp and kv values
+	// Edit kp and kv values
 	double kp_foot = 200;
 	double kv_foot = 20;
 	double kp_hand = 200;
@@ -244,49 +299,11 @@ int main() {
 
 	VectorXd q_init_desired = robot->_q;
 
-	// define Orthodox posture
-
+	// Define Orthodox posture
 	VectorXd q_desired = q_init_desired;
-
-	//Overactuation
-	q_desired[2] = -0.135069;
-
-	//Right Leg
-	q_desired[6] = -M_PI/16;
-	q_desired[7] = 0;
-	q_desired[8] = 0;
-	q_desired[9] = M_PI/4;
-	q_desired[10] = M_PI/16;
-	q_desired[11] = -M_PI/4;
-
-	//Left Leg
-	q_desired[12] = M_PI/16;
-	q_desired[13] = -M_PI/4;
-	q_desired[14] = 0;
-	q_desired[15] = M_PI/4;
-	q_desired[16] = -M_PI/16;
-	q_desired[17] = 0;
-
-	//Trunk
-	q_desired[18] = 0;
-
-	//Right Arm
-	q_desired[19] = M_PI/6;
-	q_desired[20] = M_PI/6;
-	q_desired[21] = 0;
-	q_desired[22] = 3*M_PI/4;;
-	q_desired[23] = 0;
-	q_desired[24] = 0;
-
-	q_desired[25] = M_PI/6;
-	q_desired[26] = M_PI/6;
-	q_desired[27] = 0;
-	q_desired[28] = 3*M_PI/4;;
-	q_desired[29] = 0;
-	q_desired[30] = 0;
+	q_desired = orthodox_posture(q_desired);
 
 	// Set joint task posture to orthodox
-
 	joint_task->_desired_position = q_desired;
 
 	// gravity vector
