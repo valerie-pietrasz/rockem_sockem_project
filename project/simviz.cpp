@@ -31,7 +31,7 @@ const string bag_name = "punching_bag";
 // const string env_name = "env";
 const string camera_name = "camera_fixed";
 
-const int timeDilationFactor = 20;
+const int timeDilationFactor = 1;
 
 // redis keys:
 // - write:
@@ -87,11 +87,7 @@ int main() {
 
 	// load robots
 	auto robot = new Sai2Model::Sai2Model(robot_file, false);
-	robot->updateKinematics();
-	// load punching bag
 	auto bag = new Sai2Model::Sai2Model(bag_file, false);
-	bag->updateKinematics();
-	// load world
 	auto env = new Sai2Model::Sai2Model(env_file, false);
 	env->updateKinematics();
 
@@ -105,7 +101,8 @@ int main() {
 	sim->getJointVelocities(robot_name, robot->_dq);
 	robot->updateKinematics();
 
-	sim->getJointPositions(bag_name, bag->_q);
+	bag->_q = Vector3d(0,0,-M_PI/2);
+	sim->setJointPositions(bag_name, bag->_q);
 	sim->getJointVelocities(bag_name, bag->_dq);
 	bag->updateKinematics();
 
@@ -124,7 +121,7 @@ int main() {
 	int screenW = mode->width;
 	int screenH = mode->height;
 	int windowW = 0.8 * screenH;
-	int windowH = 0.5 * screenH;
+	int windowH = 0.7 * screenH;
 	int windowPosY = (screenH - windowH) / 2;
 	int windowPosX = windowPosY;
 
@@ -160,6 +157,7 @@ int main() {
 		int width, height;
 		glfwGetFramebufferSize(window, &width, &height);
 		graphics->updateGraphics(robot_name, robot);
+		graphics->updateGraphics(bag_name, bag);
 		graphics->render(camera_name, width, height);
 
 		// swap buffers
@@ -315,11 +313,11 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 
 		if (fRobotLinkSelect) {
 			sim->setJointTorques(robot_name, command_torques + ui_force_command_torques + robot_g);
-			sim->setJointTorques(bag_name, ui_force_command_torques + bag_g);
+			sim->setJointTorques(bag_name, ui_force_command_torques -30*bag->_dq);
 		}
 		else {
 			sim->setJointTorques(robot_name, command_torques + robot_g);
-			sim->setJointTorques(bag_name, ui_force_command_torques + bag_g);
+			sim->setJointTorques(bag_name, ui_force_command_torques -30*bag->_dq);
 		}
 
 		// integrate forward
@@ -331,6 +329,8 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 		sim->getJointPositions(robot_name, robot->_q);
 		sim->getJointVelocities(robot_name, robot->_dq);
 		robot->updateModel();
+		sim->getJointPositions(bag_name, bag->_q);
+		sim->getJointVelocities(bag_name, bag->_dq);
 		bag->updateModel();
 
 		// write new robot state to redis

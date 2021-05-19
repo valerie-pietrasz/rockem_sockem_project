@@ -54,9 +54,9 @@
     </link>
     <link name="bag">
       <inertial>
-        <origin xyz="0 0 0" rpy="0 0 0" />
+        <origin xyz="0 -1 0" rpy="0 0 0" />
         <mass value="20" />
-        <inertia ixx="0.2" iyy="0.2" izz="0.2" ixy="0" ixz="0" iyz="0" />
+        <inertia ixx="10e-14" iyy="10e-14" izz="10e-14" ixy="0" ixz="0" iyz="0" />
       </inertial>
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0" />
@@ -66,7 +66,7 @@
       </visual>
       <!-- For finding the origin if needed -->
       <!-- <visual>
-        <origin xyz="0 0 0" rpy="0 0 0" />
+        <origin xyz="0 -1 0" rpy="0 0 0" />
         <geometry>
           <sphere radius="0.3" rgba="0.5 0.5 1"/>
         </geometry>

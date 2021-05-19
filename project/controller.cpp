@@ -313,7 +313,7 @@ int main() {
 
 				// calculate command torques
 				command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
-				
+
 				cout << (robot->_q - q_desired).squaredNorm() << endl;
 				if ((robot->_q - q_desired).squaredNorm() < 0.04){
 					state = JAB_INIT;
@@ -361,15 +361,15 @@ int main() {
 				// calculate command torques
 				command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handR + joint_task_torques;
 				cout << (x_pos_bag - x_pos_rh).squaredNorm() << endl;
+
 				if ((x_pos_bag - x_pos_rh).squaredNorm() < 0.05){
 					state = NEUTRAL;
 				}
 				break;
 
 
-
 		}
-		
+
 		// posori_task_handR->updateTaskModel(N_prec);
 		// posori_task_handR->computeTorques(posori_task_torques_handR);
 
@@ -537,12 +537,4 @@ VectorXd jab_posture(VectorXd q_desired) {
 	q_desired[31] = M_PI/6;
 
 	return q_desired;
-}
-
-Vector3d perturb_bag(Vector3d bag_torques) {
-
-	bag_torques[1] = 1;
-
-	return bag_torques;
-
 }
