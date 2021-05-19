@@ -4,7 +4,7 @@
     <link name="link0">
       <inertial>
         <origin xyz="0 0 0" rpy="0 0 0" />
-        <mass value="0.1" />
+        <mass value="1e-16" />
         <inertia ixx="0.1" iyy="0.1" izz="0.1" ixy="0" ixz="0" iyz="0" />
       </inertial>
       <!-- <visual>
@@ -21,7 +21,7 @@
     <link name="link1">
       <inertial>
         <origin xyz="0 0 0" rpy="0 0 0" />
-        <mass value="0.1" />
+        <mass value="1e-16"/>
         <inertia ixx="0.1" iyy="0.1" izz="0.1" ixy="0" ixz="0" iyz="0" />
       </inertial>
       <!-- <visual>
@@ -38,7 +38,7 @@
     <link name="link2">
       <inertial>
         <origin xyz="0 0 0" rpy="0 0 0" />
-        <mass value="3" />
+        <mass value="1e-16" />
         <inertia ixx="0.3" iyy="0.3" izz="0.3" ixy="0" ixz="0" iyz="0" />
       </inertial>
       <!-- <visual>
@@ -54,25 +54,39 @@
     </link>
     <link name="bag">
       <inertial>
-        <origin xyz="1.5 0 0" rpy="0 0 0" />
+        <origin xyz="0 0 0" rpy="0 0 0" />
         <mass value="20" />
         <inertia ixx="0.2" iyy="0.2" izz="0.2" ixy="0" ixz="0" iyz="0" />
       </inertial>
       <visual>
-        <geometry>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry> <!-- Add origins to all visuals!! -->
           <mesh filename="../../../model/boxing_ring/meshes/punchbag_blender.obj"/>
         </geometry>
       </visual>
-      <collision>
+      <!-- For finding the origin if needed -->
+      <!-- <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <sphere radius="0.3" rgba="0.5 0.5 1"/>
+        </geometry>
+        <material name="material_gray">
+          <color rgba="0.3 0.3 0.5 1.0" />
+        </material>
+      </visual> -->
+
+      <!-- Suggestions: Use cylinder primitive  -->
+      <!-- http://wiki.ros.org/urdf/Tutorials/Adding%20Physical%20and%20Collision%20Properties%20to%20a%20URDF%20Model -->
+      <!-- <collision>
         <geometry>
           <mesh filename="../../../model/boxing_ring/meshes/collision/punchbag_collision.obj"/>
         </geometry>
-      </collision>
+      </collision> -->
     </link>
 
     <joint name="joint1" type="revolute">
       <safety_controller k_position="100.0" k_velocity="50.0" soft_lower_limit="-1.57079632679" soft_upper_limit="1.57079632679"/>
-      <origin rpy="1.57079632679 0 1.57079632679" xyz="0.75 0 0.7"/>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
       <parent link="link0"/>
       <child link="link1"/>
       <axis xyz="0 0 1"/>
@@ -83,7 +97,7 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <parent link="link1"/>
       <child link="link2"/>
-      <axis xyz="0 0 1"/>
+      <axis xyz="0 1 0"/>
       <limit effort="100" lower="-3.14159265359" upper="3.14159265359" velocity="3.14159265359"/>
     </joint>
     <joint name="joint3" type="revolute">
@@ -91,7 +105,7 @@
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <parent link="link2"/>
       <child link="bag"/>
-      <axis xyz="0 0 1"/>
+      <axis xyz="1 0 0"/>
       <limit effort="100" lower="-3.14159265359" upper="3.14159265359" velocity="3.14159265359"/>
     </joint>
 

@@ -8,12 +8,12 @@
 
 	<robot name="punching_bag">
 		<model dir="./resources" path="punching_bag.urdf" name="punching_bag" />
-		<origin xyz="0 0 0" />
+		<origin xyz="0.75 0 0.82" rpy="1.57079632679 0 1.57079632679" /> <!-- <forward from Toro, left of Toro, up> -->
 	</robot>
 
 	<robot name="env">
 		<model dir="./resources" path="environment.urdf" name="env" />
-		<origin xyz="0 0 0" />
+		<origin xyz="0.75 0 0.82" /> <!-- should match punching_bag! (line 11) -->
 	</robot>
 
 	<light name="light1" type="directional">
