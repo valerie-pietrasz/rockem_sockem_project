@@ -31,7 +31,7 @@ const string bag_name = "punching_bag";
 // const string env_name = "env";
 const string camera_name = "camera_fixed";
 
-const int timeDilationFactor = 1;
+const int timeDilationFactor = 20;
 
 // redis keys:
 // - write:
@@ -87,7 +87,15 @@ int main() {
 
 	// load robots
 	auto robot = new Sai2Model::Sai2Model(robot_file, false);
-	auto bag = new Sai2Model::Sai2Model(bag_file, false);
+	Matrix3d R_world_bag;
+	R_world_bag = AngleAxisd(M_PI/2, Vector3d::UnitX())
+								* AngleAxisd(0.0, Vector3d::UnitY())
+								* AngleAxisd(M_PI/2, Vector3d::UnitZ());
+	Affine3d T_world_bag = Affine3d::Identity();
+	T_world_bag.translation() = Vector3d(0.75, 0, 0.82);
+	T_world_bag.linear() = R_world_bag;
+
+	auto bag = new Sai2Model::Sai2Model(bag_file, false, T_world_bag);
 	auto env = new Sai2Model::Sai2Model(env_file, false);
 	env->updateKinematics();
 
@@ -298,7 +306,7 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 	ui_force_command_torques.setZero();
 
 	while (fSimulationRunning) {
-		fTimerDidSleep = timer.waitForNextLoop();
+		// fTimerDidSleep = timer.waitForNextLoop();
 
 		// get gravity torques
 		robot->gravityVector(robot_g);

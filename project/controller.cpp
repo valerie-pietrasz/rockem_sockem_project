@@ -54,7 +54,6 @@ const bool inertia_regularization = true;
 VectorXd orthodox_posture(VectorXd q_desired);
 VectorXd cross_posture(VectorXd q_desired);
 VectorXd jab_posture(VectorXd q_desired);
-Vector3d perturb_bag(Vector3d q_);
 
 //--------------------------------------- Main ---------------------------------------//
 //--------------------------------------- Main ---------------------------------------//
@@ -77,14 +76,22 @@ int main() {
 	VectorXd initial_q = robot->_q;
 	robot->updateModel();
 
-	auto bag = new Sai2Model::Sai2Model(bag_file, false);
-	Vector3d bag_torques = Vector3d(0, 0, 0);
+	Matrix3d R_world_bag;
+	R_world_bag = AngleAxisd(M_PI/2, Vector3d::UnitX())
+								* AngleAxisd(0.0, Vector3d::UnitY())
+								* AngleAxisd(M_PI/2, Vector3d::UnitZ());
+	Affine3d T_world_bag = Affine3d::Identity();
+	T_world_bag.translation() = Vector3d(0.75, 0, 0.82);
+	T_world_bag.linear() = R_world_bag;
+
+	auto bag = new Sai2Model::Sai2Model(bag_file, false, T_world_bag);
 	bag->updateModel();
 	// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, bag_torques); // Don't know why I thought I needed this line? -- Val
 
 	// prepare controller
 	int dof = robot->dof();
 	VectorXd command_torques = VectorXd::Zero(dof);
+	// Vector3d bag_torques = Vector3d::Zero();
 	MatrixXd N_prec = MatrixXd::Identity(dof, dof);
 
 	// Edit kp and kv values
@@ -270,6 +277,7 @@ int main() {
 	bool fTimerDidSleep = true;
 
 	// Initialize useful vectors
+	Vector3d bag_cm = R_world_bag*Vector3d(0, 1, 0);
 	Vector3d x_pos_rf;
 	Vector3d x_pos_lf;
 	Vector3d x_pos_rh;
@@ -333,13 +341,14 @@ int main() {
 
 			case CROSS_INIT:
 
-				//bag->positionInWorld(x_pos_bag, "bag");
-				x_pos_bag << 0.8, 0, 0.3;
+				bag->positionInWorld(x_pos_bag, "bag", bag_cm);
+				cout << x_pos_bag.transpose() << "\n";
+				//x_pos_bag << 0.8, 0, 0.3;
 				//x_pos_bag[1] = 0;
 				robot->positionInWorld(x_pos_rh, "ra_link6");
 
 				//cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
-				cout << "Cross" << endl;
+				// cout << "Cross" << endl;
 				//update posori task
 				posori_task_handR->_desired_position = x_pos_bag;
 
@@ -383,13 +392,14 @@ int main() {
 
 			case JAB_INIT:
 
-				//bag->positionInWorld(x_pos_bag, "bag");
+				bag->positionInWorld(x_pos_bag, "bag", bag_cm);
+				cout << x_pos_bag.transpose() << "\n";
 				//x_pos_bag[1] = 0;
-				x_pos_bag << 1, 0, 0.3;
+				//x_pos_bag << 1, 0, 0.3;
 				robot->positionInWorld(x_pos_rh, "la_link6");
 
 				//cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
-				cout << "Jab" << endl;
+				// cout << "Jab" << endl;
 				//update posori task
 				posori_task_handL->_desired_position = x_pos_bag;
 
@@ -466,12 +476,10 @@ int main() {
 		// robot->_q = redis_client.getEigenMatrixJSON(JOINT_ANGLES_KEY);
 
 		bag->updateModel();
-		// if(controller_counter == 10)
-		// 	bag_torques = perturb_bag(bag_torques);
 
 		// send to redis
 		redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
-		redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, bag_torques);
+		// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, bag_torques);
 
 		//test tracking foot position with only joint task torques to choose posori targets
 		// Vector3d x_pos_rf;
@@ -649,4 +657,3 @@ VectorXd jab_posture(VectorXd q_desired) {
 
 	return q_desired;
 }
-
