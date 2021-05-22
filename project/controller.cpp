@@ -97,7 +97,7 @@ int main() {
 	// Edit kp and kv values
 	double kp_foot = 200;
 	double kv_foot = 20;
-	double kp_hand = 200;
+	double kp_hand = 100;
 	double kv_hand = 20;
 	double kp_head = 25;
 	double kv_head = 10;
@@ -327,14 +327,16 @@ int main() {
 
 				//cout << (robot->_q - q_desired).squaredNorm() << endl;
 
-				cout << "Neutral" << endl;
 				if ((robot->_q - q_desired).squaredNorm() < 0.04){
 					randomPunch = rand() % 2;
 					if (randomPunch == 0){
 						state = CROSS_INIT;
+						cout << "Cross Init" << endl;
 					}
 					else{
+						// state = JAB_INIT;
 						state = JAB_INIT;
+						cout << "Jab Init" << endl;
 					}
 				}
 				break;
@@ -342,7 +344,7 @@ int main() {
 			case CROSS_INIT:
 
 				bag->positionInWorld(x_pos_bag, "bag", bag_cm);
-				cout << x_pos_bag.transpose() << "\n";
+				//cout << x_pos_bag.transpose() << "\n";
 				//x_pos_bag << 0.8, 0, 0.3;
 				//x_pos_bag[1] = 0;
 				robot->positionInWorld(x_pos_rh, "ra_link6");
@@ -372,9 +374,12 @@ int main() {
 				posori_task_handR->updateTaskModel(N_prec);
 				posori_task_handR->computeTorques(posori_task_torques_handR);
 
-				// calculate torques to move left hand
 				N_prec = posori_task_handR->_N;
+				// posori_task_head->updateTaskModel(N_prec);
+				// posori_task_head->computeTorques(posori_task_torques_head);
 
+
+				// N_prec = posori_task_head->_N;
 				joint_task->updateTaskModel(N_prec);
 				joint_task->computeTorques(joint_task_torques);
 
@@ -387,13 +392,14 @@ int main() {
 
 				if ((x_pos_bag - x_pos_rh).squaredNorm() < 0.05){
 					state = NEUTRAL;
+					cout << "NEUTRAL" << endl;
 				}
 				break;
 
 			case JAB_INIT:
 
 				bag->positionInWorld(x_pos_bag, "bag", bag_cm);
-				cout << x_pos_bag.transpose() << "\n";
+				//cout << x_pos_bag.transpose() << "\n";
 				//x_pos_bag[1] = 0;
 				//x_pos_bag << 1, 0, 0.3;
 				robot->positionInWorld(x_pos_rh, "la_link6");
@@ -405,7 +411,7 @@ int main() {
 
 				// Define cross posture
 				q_desired = q_init_desired;
-				q_desired = cross_posture(q_desired);
+				q_desired = jab_posture(q_desired);
 
 				// Set joint task posture to cross
 				joint_task->_desired_position = q_desired;
@@ -438,6 +444,7 @@ int main() {
 
 				if ((x_pos_bag - x_pos_rh).squaredNorm() < 0.05){
 					state = NEUTRAL;
+					cout << "Neutral" << endl;
 				}
 				break;
 
@@ -586,13 +593,13 @@ VectorXd cross_posture(VectorXd q_desired) {
 	q_desired[17] = 0;
 
 	// Trunk
-	q_desired[18] = M_PI/6;
+	q_desired[18] = 0;
 
 	// Right Arm
 	q_desired[19] = M_PI/2;
-	q_desired[20] = 0;
-	q_desired[21] = 0;
-	q_desired[22] = 0;
+	q_desired[20] = M_PI/6;
+	q_desired[21] = -M_PI/3;
+	q_desired[22] = M_PI/12;
 	q_desired[23] = 0;
 	q_desired[24] = 0;
 
@@ -633,7 +640,7 @@ VectorXd jab_posture(VectorXd q_desired) {
 	q_desired[17] = 0;
 
 	// Trunk
-	q_desired[18] = 0;
+	q_desired[18] = -M_PI/6;
 
 	// Right Arm
 	q_desired[19] = M_PI/6;
@@ -646,9 +653,9 @@ VectorXd jab_posture(VectorXd q_desired) {
 
 	// Left Arm
 	q_desired[25] = M_PI/2;
-	q_desired[26] = 0;
-	q_desired[27] = 0;
-	q_desired[28] = 0;
+	q_desired[26] = M_PI/4;
+	q_desired[27] = -M_PI/2;
+	q_desired[28] = M_PI/12;
 	q_desired[29] = 0;
 	q_desired[30] = 0;
 
