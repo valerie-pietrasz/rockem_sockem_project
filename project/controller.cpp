@@ -11,16 +11,17 @@
 #include <string>
 
 #include <signal.h>
-bool runloop = true;
-void sighandler(int sig)
-{ runloop = false; }
+// flags for simulation and controller states
+bool runloop = false;
+void sighandler(int){runloop = false;}
+bool fSimulationLoopDone = false;
+bool fControllerLoopDone = false;
 
 using namespace std;
 using namespace Eigen;
 
 const string robot_file = "./resources/toro.urdf";
 const string bag_file = "./resources/punching_bag.urdf";
-
 
 // redis keys:
 // - read:
@@ -29,11 +30,14 @@ const std::string JOINT_VELOCITIES_KEY = "sai2::cs225a::project::sensors::dq";
 const std::string JOINT_TORQUES_SENSED_KEY; // Need to set in order to use
 // - write
 const std::string JOINT_TORQUES_COMMANDED_KEY = "sai2::cs225a::project::actuators::fgc";
-const std::string PUNCHING_BAG_COMMANDED_KEY = "sai2::cs225a::project::actuators::bag";
+// const std::string PUNCHING_BAG_COMMANDED_KEY = "sai2::cs225a::project::actuators::bag";
 const std::string OPERATIONAL_POSITION_RF = "sai2::cs225a::project::operational_position_RF";
 const std::string OPERATIONAL_POSITION_LF = "sai2::cs225a::project::operational_position_LF";
 const std::string OPERATIONAL_ROTATION_RF = "sai2::cs225a::project::operational_rotation_RF";
 const std::string OPERATIONAL_ROTATION_LF = "sai2::cs225a::project::operational_rotation_LF";
+// - read + write:
+const std::string SIMULATION_LOOP_DONE_KEY = "cs225a::simulation::done";
+const std::string CONTROLLER_LOOP_DONE_KEY = "cs225a::controller::done";
 
 // define states:
 #define NEUTRAL 0
@@ -54,6 +58,10 @@ const bool inertia_regularization = true;
 VectorXd orthodox_posture(VectorXd q_desired);
 VectorXd cross_posture(VectorXd q_desired);
 VectorXd jab_posture(VectorXd q_desired);
+
+// functions for converting bool <--> string
+inline const char * const bool_to_string(bool b);
+bool string_to_bool(const std::string& x);
 
 //--------------------------------------- Main ---------------------------------------//
 //--------------------------------------- Main ---------------------------------------//
@@ -269,12 +277,12 @@ int main() {
 	// gravity vector
 	VectorXd g(dof);
 
-	// create a timer
-	LoopTimer timer;
-	timer.initializeTimer();
-	timer.setLoopFrequency(200);
-	double start_time = timer.elapsedTime(); //secs
-	bool fTimerDidSleep = true;
+	// create a timer // TODO: Delete once I've merged
+	// LoopTimer timer;
+	// timer.initializeTimer();
+	// timer.setLoopFrequency(200);
+	// double start_time = timer.elapsedTime(); //secs
+	// bool fTimerDidSleep = true;
 
 	// Initialize useful vectors
 	Vector3d bag_cm = R_world_bag*Vector3d(0, 1, 0);
@@ -285,229 +293,256 @@ int main() {
 	Vector3d x_pos_bag;
 	int randomPunch;
 
+	// create a loop timer
+	double control_freq = 1000;
+	LoopTimer timer;
+	timer.setLoopFrequency(control_freq);   // 1 KHz
+	timer.initializeTimer(1000000); // 1 ms pause before starting loop
+	bool fTimerDidSleep = true;
+	double start_time = timer.elapsedTime(); // secs
+
+	unsigned long long counter = 0;
+
+	runloop = true;
 	while (runloop) {
-		// wait for next scheduled loop
-		timer.waitForNextLoop();
-		double time = timer.elapsedTime() - start_time;
 
-		// read robot state from redis
-		robot->_q = redis_client.getEigenMatrixJSON(JOINT_ANGLES_KEY);
-		robot->_dq = redis_client.getEigenMatrixJSON(JOINT_VELOCITIES_KEY);
+		// read simulation state
+    fSimulationLoopDone = string_to_bool(redis_client.get(SIMULATION_LOOP_DONE_KEY));
 
-		// update model
-		robot->updateModel();
+		// run controller loop when simulation loop is done
+		if (fSimulationLoopDone) {
 
-		switch(state){
-			case NEUTRAL:
-				// Define Orthodox posture
-				q_desired = q_init_desired;
-				q_desired = orthodox_posture(q_desired);
+			// read robot state from redis
+			robot->_q = redis_client.getEigenMatrixJSON(JOINT_ANGLES_KEY);
+			robot->_dq = redis_client.getEigenMatrixJSON(JOINT_VELOCITIES_KEY);
 
-				// Set joint task posture to orthodox
-				joint_task->_desired_position = q_desired;
+			// update model
+			robot->updateModel();
 
-				// calculate torques to fix the feet
-				N_prec.setIdentity();
-				posori_task_footR->updateTaskModel(N_prec);
-				posori_task_footR->computeTorques(posori_task_torques_footR);
+			switch(state){
+				case NEUTRAL:
+					// Define Orthodox posture
+					q_desired = q_init_desired;
+					q_desired = orthodox_posture(q_desired);
 
-				N_prec = posori_task_footR->_N;
-				posori_task_footL->updateTaskModel(N_prec);
-				posori_task_footL->computeTorques(posori_task_torques_footL);
+					// Set joint task posture to orthodox
+					joint_task->_desired_position = q_desired;
 
-				N_prec = posori_task_footL->_N;
-				joint_task->updateTaskModel(N_prec);
-				joint_task->computeTorques(joint_task_torques);
+					// calculate torques to fix the feet
+					N_prec.setIdentity();
+					posori_task_footR->updateTaskModel(N_prec);
+					posori_task_footR->computeTorques(posori_task_torques_footR);
 
-				// calculate gravity torques (if needed)
-				robot->gravityVector(g);
+					N_prec = posori_task_footR->_N;
+					posori_task_footL->updateTaskModel(N_prec);
+					posori_task_footL->computeTorques(posori_task_torques_footL);
 
-				// calculate command torques
-				command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
+					N_prec = posori_task_footL->_N;
+					joint_task->updateTaskModel(N_prec);
+					joint_task->computeTorques(joint_task_torques);
 
-				//cout << (robot->_q - q_desired).squaredNorm() << endl;
+					// calculate gravity torques (if needed)
+					robot->gravityVector(g);
 
-				cout << "Neutral" << endl;
-				if ((robot->_q - q_desired).squaredNorm() < 0.04){
-					randomPunch = rand() % 2;
-					if (randomPunch == 0){
-						state = CROSS_INIT;
+					// calculate command torques
+					command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
+
+					//cout << (robot->_q - q_desired).squaredNorm() << endl;
+
+					// cout << "Neutral" << endl;
+					if ((robot->_q - q_desired).squaredNorm() < 0.04){
+						randomPunch = rand() % 2;
+						if (randomPunch == 0){
+							state = CROSS_INIT;
+						}
+						else{
+							state = JAB_INIT;
+						}
 					}
-					else{
-						state = JAB_INIT;
+					break;
+
+				case CROSS_INIT:
+
+					bag->positionInWorld(x_pos_bag, "bag", bag_cm);
+					cout << x_pos_bag.transpose() << "\n";
+					//x_pos_bag << 0.8, 0, 0.3;
+					//x_pos_bag[1] = 0;
+					robot->positionInWorld(x_pos_rh, "ra_link6");
+
+					//cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
+					// cout << "Cross" << endl;
+					//update posori task
+					posori_task_handR->_desired_position = x_pos_bag;
+
+					// Define cross posture
+					q_desired = q_init_desired;
+					q_desired = cross_posture(q_desired);
+
+					// Set joint task posture to cross
+					joint_task->_desired_position = q_desired;
+
+					// calculate torques to fix the feet
+					N_prec.setIdentity();
+					posori_task_footR->updateTaskModel(N_prec);
+					posori_task_footR->computeTorques(posori_task_torques_footR);
+
+					N_prec = posori_task_footR->_N;
+					posori_task_footL->updateTaskModel(N_prec);
+					posori_task_footL->computeTorques(posori_task_torques_footL);
+
+					N_prec = posori_task_footL->_N;
+					posori_task_handR->updateTaskModel(N_prec);
+					posori_task_handR->computeTorques(posori_task_torques_handR);
+
+					// calculate torques to move left hand
+					N_prec = posori_task_handR->_N;
+
+					joint_task->updateTaskModel(N_prec);
+					joint_task->computeTorques(joint_task_torques);
+
+					// calculate gravity torques (if needed)
+					robot->gravityVector(g);
+
+					// calculate command torques
+					command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handR + joint_task_torques;
+					//cout << (x_pos_bag - x_pos_rh).squaredNorm() << endl;
+
+					if ((x_pos_bag - x_pos_rh).squaredNorm() < 0.05){
+						state = NEUTRAL;
 					}
-				}
-				break;
+					break;
 
-			case CROSS_INIT:
+				case JAB_INIT:
 
-				bag->positionInWorld(x_pos_bag, "bag", bag_cm);
-				cout << x_pos_bag.transpose() << "\n";
-				//x_pos_bag << 0.8, 0, 0.3;
-				//x_pos_bag[1] = 0;
-				robot->positionInWorld(x_pos_rh, "ra_link6");
+					bag->positionInWorld(x_pos_bag, "bag", bag_cm);
+					cout << x_pos_bag.transpose() << "\n";
+					//x_pos_bag[1] = 0;
+					//x_pos_bag << 1, 0, 0.3;
+					robot->positionInWorld(x_pos_rh, "la_link6");
 
-				//cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
-				// cout << "Cross" << endl;
-				//update posori task
-				posori_task_handR->_desired_position = x_pos_bag;
+					//cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
+					// cout << "Jab" << endl;
+					//update posori task
+					posori_task_handL->_desired_position = x_pos_bag;
 
-				// Define cross posture
-				q_desired = q_init_desired;
-				q_desired = cross_posture(q_desired);
+					// Define cross posture
+					q_desired = q_init_desired;
+					q_desired = cross_posture(q_desired);
 
-				// Set joint task posture to cross
-				joint_task->_desired_position = q_desired;
+					// Set joint task posture to cross
+					joint_task->_desired_position = q_desired;
 
-				// calculate torques to fix the feet
-				N_prec.setIdentity();
-				posori_task_footR->updateTaskModel(N_prec);
-				posori_task_footR->computeTorques(posori_task_torques_footR);
+					// calculate torques to fix the feet
+					N_prec.setIdentity();
+					posori_task_footR->updateTaskModel(N_prec);
+					posori_task_footR->computeTorques(posori_task_torques_footR);
 
-				N_prec = posori_task_footR->_N;
-				posori_task_footL->updateTaskModel(N_prec);
-				posori_task_footL->computeTorques(posori_task_torques_footL);
+					N_prec = posori_task_footR->_N;
+					posori_task_footL->updateTaskModel(N_prec);
+					posori_task_footL->computeTorques(posori_task_torques_footL);
 
-				N_prec = posori_task_footL->_N;
-				posori_task_handR->updateTaskModel(N_prec);
-				posori_task_handR->computeTorques(posori_task_torques_handR);
+					N_prec = posori_task_footL->_N;
+					posori_task_handL->updateTaskModel(N_prec);
+					posori_task_handL->computeTorques(posori_task_torques_handL);
 
-				// calculate torques to move left hand
-				N_prec = posori_task_handR->_N;
+					// calculate torques to move left hand
+					N_prec = posori_task_handL->_N;
 
-				joint_task->updateTaskModel(N_prec);
-				joint_task->computeTorques(joint_task_torques);
+					joint_task->updateTaskModel(N_prec);
+					joint_task->computeTorques(joint_task_torques);
 
-				// calculate gravity torques (if needed)
-				robot->gravityVector(g);
+					// calculate gravity torques (if needed)
+					robot->gravityVector(g);
 
-				// calculate command torques
-				command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handR + joint_task_torques;
-				//cout << (x_pos_bag - x_pos_rh).squaredNorm() << endl;
+					// calculate command torques
+					command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handL + joint_task_torques;
+					//cout << (x_pos_bag - x_pos_rh).squaredNorm() << endl;
 
-				if ((x_pos_bag - x_pos_rh).squaredNorm() < 0.05){
-					state = NEUTRAL;
-				}
-				break;
+					if ((x_pos_bag - x_pos_rh).squaredNorm() < 0.05){
+						state = NEUTRAL;
+					}
+					break;
 
-			case JAB_INIT:
+			}
 
-				bag->positionInWorld(x_pos_bag, "bag", bag_cm);
-				cout << x_pos_bag.transpose() << "\n";
-				//x_pos_bag[1] = 0;
-				//x_pos_bag << 1, 0, 0.3;
-				robot->positionInWorld(x_pos_rh, "la_link6");
+			// posori_task_handR->updateTaskModel(N_prec);
+			// posori_task_handR->computeTorques(posori_task_torques_handR);
 
-				//cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
-				// cout << "Jab" << endl;
-				//update posori task
-				posori_task_handL->_desired_position = x_pos_bag;
+			// // calculate torques to move left hand
+			// N_prec = posori_task_handR->_N;
+			// posori_task_handL->updateTaskModel(N_prec);
+			// posori_task_handL->computeTorques(posori_task_torques_handL);
 
-				// Define cross posture
-				q_desired = q_init_desired;
-				q_desired = cross_posture(q_desired);
+			// // calculate torques to move head
+			// N_prec = posori_task_handL->_N;
+			// posori_task_head->updateTaskModel(N_prec);
+			// posori_task_head->computeTorques(posori_task_torques_head);
 
-				// Set joint task posture to cross
-				joint_task->_desired_position = q_desired;
+			// // calculate torques to maintain joint posture
+			// N_prec = posori_task_head->_N;
+			//joint_task->updateTaskModel(N_prec);
+			//joint_task->computeTorques(joint_task_torques);
 
-				// calculate torques to fix the feet
-				N_prec.setIdentity();
-				posori_task_footR->updateTaskModel(N_prec);
-				posori_task_footR->computeTorques(posori_task_torques_footR);
+			// calculate gravity torques (if needed)
+			//robot->gravityVector(g);
 
-				N_prec = posori_task_footR->_N;
-				posori_task_footL->updateTaskModel(N_prec);
-				posori_task_footL->computeTorques(posori_task_torques_footL);
+			// calculate torques
+			// command_torques = posori_task_torques_footR + posori_task_torques_footL + \
+			// 					posori_task_torques_handR + posori_task_torques_handL + \
+			// 					posori_task_torques_head + joint_task_torques;  // gravity compensation handled in sim
+			// command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
+			// command_torques = joint_task_torques;
 
-				N_prec = posori_task_footL->_N;
-				posori_task_handL->updateTaskModel(N_prec);
-				posori_task_handL->computeTorques(posori_task_torques_handL);
+			// PUNCHING BAG //
+			// if needed, read bag state from redis, like so:
+			// robot->_q = redis_client.getEigenMatrixJSON(JOINT_ANGLES_KEY);
 
-				// calculate torques to move left hand
-				N_prec = posori_task_handL->_N;
+			bag->updateModel();
 
-				joint_task->updateTaskModel(N_prec);
-				joint_task->computeTorques(joint_task_torques);
+			// send to redis
+			redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
+			// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, bag_torques);
 
-				// calculate gravity torques (if needed)
-				robot->gravityVector(g);
+			//test tracking foot position with only joint task torques to choose posori targets
+			// Vector3d x_pos_rf;
+			// robot->positionInWorld(x_pos_rf, "RL_foot", Vector3d(0,0,0));
+			// Matrix3d x_ori_rf;
+			// robot->rotationInWorld(x_ori_rf, "RL_foot");
 
-				// calculate command torques
-				command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handL + joint_task_torques;
-				//cout << (x_pos_bag - x_pos_rh).squaredNorm() << endl;
+			// Vector3d x_pos_lf;
+			// robot->positionInWorld(x_pos_lf, "LL_foot", Vector3d(0,0,0));
+			// Matrix3d x_ori_lf;
+			// robot->rotationInWorld(x_ori_lf, "LL_foot");
 
-				if ((x_pos_bag - x_pos_rh).squaredNorm() < 0.05){
-					state = NEUTRAL;
-				}
-				break;
+			// redis_client.setEigenMatrixJSON(OPERATIONAL_POSITION_RF, x_pos_rf.transpose());
+			// redis_client.setEigenMatrixJSON(OPERATIONAL_POSITION_LF, x_pos_lf.transpose());
+			// redis_client.setEigenMatrixJSON(OPERATIONAL_ROTATION_RF, x_ori_rf.transpose());
+			// redis_client.setEigenMatrixJSON(OPERATIONAL_ROTATION_LF, x_ori_lf.transpose());
 
+			// std::cout << "Z actuation position : " << q_desired[2] << "\n";
+
+			//increment
+			controller_counter++;
 		}
 
-		// posori_task_handR->updateTaskModel(N_prec);
-		// posori_task_handR->computeTorques(posori_task_torques_handR);
+		// controller loop is done
+		fControllerLoopDone = true;
+		redis_client.set(CONTROLLER_LOOP_DONE_KEY, bool_to_string(fControllerLoopDone));
 
-		// // calculate torques to move left hand
-		// N_prec = posori_task_handR->_N;
-		// posori_task_handL->updateTaskModel(N_prec);
-		// posori_task_handL->computeTorques(posori_task_torques_handL);
-
-		// // calculate torques to move head
-		// N_prec = posori_task_handL->_N;
-		// posori_task_head->updateTaskModel(N_prec);
-		// posori_task_head->computeTorques(posori_task_torques_head);
-
-		// // calculate torques to maintain joint posture
-		// N_prec = posori_task_head->_N;
-		//joint_task->updateTaskModel(N_prec);
-		//joint_task->computeTorques(joint_task_torques);
-
-		// calculate gravity torques (if needed)
-		//robot->gravityVector(g);
-
-		// calculate torques
-		// command_torques = posori_task_torques_footR + posori_task_torques_footL + \
-		// 					posori_task_torques_handR + posori_task_torques_handL + \
-		// 					posori_task_torques_head + joint_task_torques;  // gravity compensation handled in sim
-		// command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
-		// command_torques = joint_task_torques;
-
-		// PUNCHING BAG //
-		// if needed, read bag state from redis, like so:
-		// robot->_q = redis_client.getEigenMatrixJSON(JOINT_ANGLES_KEY);
-
-		bag->updateModel();
-
-		// send to redis
-		redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
-		// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, bag_torques);
-
-		//test tracking foot position with only joint task torques to choose posori targets
-		// Vector3d x_pos_rf;
-		// robot->positionInWorld(x_pos_rf, "RL_foot", Vector3d(0,0,0));
-		// Matrix3d x_ori_rf;
-		// robot->rotationInWorld(x_ori_rf, "RL_foot");
-
-		// Vector3d x_pos_lf;
-		// robot->positionInWorld(x_pos_lf, "LL_foot", Vector3d(0,0,0));
-		// Matrix3d x_ori_lf;
-		// robot->rotationInWorld(x_ori_lf, "LL_foot");
-
-		// redis_client.setEigenMatrixJSON(OPERATIONAL_POSITION_RF, x_pos_rf.transpose());
-		// redis_client.setEigenMatrixJSON(OPERATIONAL_POSITION_LF, x_pos_lf.transpose());
-		// redis_client.setEigenMatrixJSON(OPERATIONAL_ROTATION_RF, x_ori_rf.transpose());
-		// redis_client.setEigenMatrixJSON(OPERATIONAL_ROTATION_LF, x_ori_lf.transpose());
-
-		// std::cout << "Z actuation position : " << q_desired[2] << "\n";
-
-		//increment
-		controller_counter++;
 	}
 
+	command_torques.setZero();
+	redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
+
+	// controller loop is turned off
+	fControllerLoopDone = false;
+	redis_client.set(CONTROLLER_LOOP_DONE_KEY, bool_to_string(fControllerLoopDone));
+
 	double end_time = timer.elapsedTime();
-    std::cout << "\n";
-    std::cout << "Controller Loop run time  : " << end_time << " seconds\n";
-    std::cout << "Controller Loop updates   : " << timer.elapsedCycles() << "\n";
-    std::cout << "Controller Loop frequency : " << timer.elapsedCycles()/end_time << "Hz\n";
+  std::cout << "\n";
+  std::cout << "Controller Loop run time  : " << end_time << " seconds\n";
+  std::cout << "Controller Loop updates   : " << timer.elapsedCycles() << "\n";
+  std::cout << "Controller Loop frequency : " << timer.elapsedCycles()/end_time << "Hz\n";
 
 	return 0;
 }
@@ -656,4 +691,14 @@ VectorXd jab_posture(VectorXd q_desired) {
 	q_desired[31] = M_PI/6;
 
 	return q_desired;
+}
+
+bool string_to_bool(const std::string& x) {
+  assert(x == "false" || x == "true");
+  return x == "true";
+}
+
+inline const char * const bool_to_string(bool b)
+{
+  return b ? "true" : "false";
 }
