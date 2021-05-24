@@ -50,9 +50,9 @@ unsigned long long controller_counter = 0;
 const bool inertia_regularization = true;
 
 // Function prototypes //
-VectorXd orthodox_posture(VectorXd q_desired);
-VectorXd cross_posture(VectorXd q_desired);
-VectorXd jab_posture(VectorXd q_desired);
+void orthodox_posture(VectorXd& q_desired);
+void cross_posture(VectorXd& q_desired);
+void jab_posture(VectorXd& q_desired);
 
 //--------------------------------------- Main ---------------------------------------//
 //--------------------------------------- Main ---------------------------------------//
@@ -92,7 +92,6 @@ int main() {
 	VectorXd command_torques = VectorXd::Zero(dof);
 	// Vector3d bag_torques = Vector3d::Zero();
 	MatrixXd N_prec = MatrixXd::Identity(dof, dof);
-	MatrixXd N_prec_arm = MatrixXd::Identity(dof, dof);
 
 	// Edit kp and kv values
 	double kp_foot = 200;
@@ -101,6 +100,8 @@ int main() {
 	double kv_hand = 20;
 	double kp_head = 25;
 	double kv_head = 10;
+	double kp_joint = 100;
+	double kv_joint = 20;
 
 	// record initial position of torso
 	string hip_control_link = "hip_base";
@@ -254,8 +255,8 @@ int main() {
 	#endif
 
 	VectorXd joint_task_torques = VectorXd::Zero(dof);
-	joint_task->_kp = 100.0;
-	joint_task->_kv = 20.0;
+	joint_task->_kp = kp_joint;
+	joint_task->_kv = kv_joint;
 
 	// Record initial joint posture
 
@@ -265,7 +266,7 @@ int main() {
 	// Set state to initial state
 	//Initial state//
 	int state = NEUTRAL;
-
+	cout << "Neutral" << endl;
 	// gravity vector
 	VectorXd g(dof);
 
@@ -296,21 +297,34 @@ int main() {
 
 		// update model
 		robot->updateModel();
-
+		bag->updateModel();
 		// sensing world
 		bag->positionInWorld(x_pos_bag, "bag", bag_cm);
 		robot->positionInWorld(x_pos_rh, "ra_link6");
 		robot->positionInWorld(x_pos_lh, "la_link6");
 
+		// calculate torques to fix the feet
+		N_prec.setIdentity();
+		posori_task_footR->updateTaskModel(N_prec);
+		posori_task_footR->computeTorques(posori_task_torques_footR);
+
+		N_prec = posori_task_footR->_N;
+		posori_task_footL->updateTaskModel(N_prec);
+		posori_task_footL->computeTorques(posori_task_torques_footL);
+
 		switch(state){ // Needs x_pos_bag, x_pos_rh
 			case NEUTRAL:
 				// Define Orthodox posture
 				q_desired = q_init_desired;
-				q_desired = orthodox_posture(q_desired);
+				orthodox_posture(q_desired);
+				joint_task->_desired_position = q_desired;
+				// Generate command torques
+				N_prec = posori_task_footL->_N;
+				joint_task->updateTaskModel(N_prec);
+				joint_task->computeTorques(joint_task_torques);
 
-				N_prec_arm.setIdentity();
-
-				//cout << (robot->_q - q_desired).squaredNorm() << endl;
+				command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
+				// cout << (robot->_q - q_desired).squaredNorm() << endl;
 				if ((robot->_q - q_desired).squaredNorm() < 0.04){
 					randomPunch = rand() % 2;
 					if (randomPunch == 0){
@@ -332,11 +346,20 @@ int main() {
 
 				// Define cross posture
 				q_desired = q_init_desired;
-				q_desired = cross_posture(q_desired);
+				cross_posture(q_desired);
+				joint_task->_desired_position = q_desired;
 
-				N_prec_arm = posori_task_handR->_N;
+				N_prec = posori_task_footL->_N;
+				posori_task_handR->updateTaskModel(N_prec);
+				posori_task_handR->computeTorques(posori_task_torques_handR);
 
-				cout << (x_pos_bag - x_pos_rh).squaredNorm() << endl;
+				N_prec = posori_task_handR->_N;
+				joint_task->updateTaskModel(N_prec);
+				joint_task->computeTorques(joint_task_torques);
+
+				command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handR + joint_task_torques;
+
+				// cout << (x_pos_bag - x_pos_rh).squaredNorm() << endl;
 				if ((x_pos_bag - x_pos_rh).squaredNorm() < 0.05){
 					state = NEUTRAL;
 					cout << "Neutral" << endl;
@@ -351,51 +374,33 @@ int main() {
 
 				// Define cross posture
 				q_desired = q_init_desired;
-				q_desired = jab_posture(q_desired);
+				jab_posture(q_desired);
+				joint_task->_desired_position = q_desired;
 
-				N_prec_arm = posori_task_handL->_N;
 
-				cout << (x_pos_bag - x_pos_lh).squaredNorm() << endl;
+				N_prec = posori_task_footL->_N;
+				posori_task_handL->updateTaskModel(N_prec);
+				posori_task_handL->computeTorques(posori_task_torques_handR);
+
+				N_prec = posori_task_handL->_N;
+				joint_task->updateTaskModel(N_prec);
+				joint_task->computeTorques(joint_task_torques);
+
+				command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handL + joint_task_torques;
+
+				// cout << (x_pos_bag - x_pos_lh).squaredNorm() << endl;
 				if ((x_pos_bag - x_pos_lh).squaredNorm() < 0.05){
 					state = NEUTRAL;
 					cout << "Neutral" << endl;
 				}
 				break;
 
-		} // Each state returns q_desired, posori_tasks
-
-		// Set joint task posture from state
-		joint_task->_desired_position = q_desired;
-
-		// calculate torques to fix the feet
-		N_prec.setIdentity();
-
-		posori_task_footR->updateTaskModel(N_prec);
-		posori_task_footR->computeTorques(posori_task_torques_footR);
-
-		N_prec = posori_task_footR->_N;
-		posori_task_footL->updateTaskModel(N_prec);
-		posori_task_footL->computeTorques(posori_task_torques_footL);
-
-		N_prec = posori_task_footL->_N;
-		joint_task->updateTaskModel(N_prec);
-		joint_task->computeTorques(joint_task_torques);
-
-		// punch
-		joint_task->updateTaskModel(N_prec_arm);
-		joint_task->computeTorques(joint_task_torques);
-
-		// calculate gravity torques (if needed)
-		// robot->gravityVector(g);
-
-		// calculate command torques
-		command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
+		}
 
 		// PUNCHING BAG //
 		// if needed, read bag state from redis, like so:
 		// robot->_q = redis_client.getEigenMatrixJSON(JOINT_ANGLES_KEY);
 
-		bag->updateModel();
 
 		// send to redis
 		redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
@@ -436,7 +441,7 @@ int main() {
 //------------------------------- Functions -------------------------------//
 //------------------------------- Functions -------------------------------//
 
-VectorXd orthodox_posture(VectorXd q_desired) {
+void orthodox_posture(VectorXd& q_desired) {
 
 	// Overactuation
 	q_desired[2] = -0.135069;
@@ -479,11 +484,9 @@ VectorXd orthodox_posture(VectorXd q_desired) {
 
 	// Head
 	q_desired[31] = M_PI/6;
-
-	return q_desired;
 }
 
-VectorXd cross_posture(VectorXd q_desired) {
+void cross_posture(VectorXd& q_desired) {
 
 	// Overactuation
 	q_desired[2] = -0.135069;
@@ -527,10 +530,9 @@ VectorXd cross_posture(VectorXd q_desired) {
 	// Head
 	q_desired[31] = M_PI/6;
 
-	return q_desired;
 }
 
-VectorXd jab_posture(VectorXd q_desired) {
+void jab_posture(VectorXd& q_desired) {
 
 	// Overactuation
 	q_desired[2] = -0.135069;
@@ -574,6 +576,4 @@ VectorXd jab_posture(VectorXd q_desired) {
 
 	// Head
 	q_desired[31] = M_PI/6;
-
-	return q_desired;
 }
