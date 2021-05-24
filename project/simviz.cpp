@@ -15,12 +15,14 @@
 
 #include <signal.h>
 bool fSimulationRunning = false;
-void sighandler(int){fSimulationRunning = false;}
+void sighandler(int)
+{ fSimulationRunning = false; }
 
 using namespace std;
 using namespace Eigen;
 
 const double clock_delay_factor = 10;
+const int timeDilationFactor = 20;
 
 const string world_file = "./resources/world.urdf";
 const string robot_file = "./resources/toro.urdf";
@@ -30,8 +32,6 @@ const string robot_name = "DLR_TORO";
 const string bag_name = "punching_bag";
 // const string env_name = "env";
 const string camera_name = "camera_fixed";
-
-const int timeDilationFactor = 20;
 
 // redis keys:
 // - write:
@@ -321,11 +321,11 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 
 		if (fRobotLinkSelect) {
 			sim->setJointTorques(robot_name, command_torques + ui_force_command_torques + robot_g);
-			sim->setJointTorques(bag_name, ui_force_command_torques -30*bag->_dq);
+			sim->setJointTorques(bag_name, ui_force_command_torques - 30*bag->_dq);
 		}
 		else {
 			sim->setJointTorques(robot_name, command_torques + robot_g);
-			sim->setJointTorques(bag_name, ui_force_command_torques -30*bag->_dq);
+			sim->setJointTorques(bag_name, ui_force_command_torques - 30*bag->_dq);
 		}
 
 		// integrate forward

@@ -297,36 +297,17 @@ int main() {
 		// update model
 		robot->updateModel();
 
-		switch(state){
+		// sensing world
+		bag->positionInWorld(x_pos_bag, "bag", bag_cm);
+		robot->positionInWorld(x_pos_rh, "ra_link6");
+
+		switch(state){ // Needs x_pos_bag, x_pos_rh
 			case NEUTRAL:
 				// Define Orthodox posture
 				q_desired = q_init_desired;
 				q_desired = orthodox_posture(q_desired);
 
-				// Set joint task posture to orthodox
-				joint_task->_desired_position = q_desired;
-
-				// calculate torques to fix the feet
-				N_prec.setIdentity();
-				posori_task_footR->updateTaskModel(N_prec);
-				posori_task_footR->computeTorques(posori_task_torques_footR);
-
-				N_prec = posori_task_footR->_N;
-				posori_task_footL->updateTaskModel(N_prec);
-				posori_task_footL->computeTorques(posori_task_torques_footL);
-
-				N_prec = posori_task_footL->_N;
-				joint_task->updateTaskModel(N_prec);
-				joint_task->computeTorques(joint_task_torques);
-
-				// calculate gravity torques (if needed)
-				robot->gravityVector(g);
-
-				// calculate command torques
-				command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
-
 				//cout << (robot->_q - q_desired).squaredNorm() << endl;
-
 				if ((robot->_q - q_desired).squaredNorm() < 0.04){
 					randomPunch = rand() % 2;
 					if (randomPunch == 0){
@@ -343,12 +324,6 @@ int main() {
 
 			case CROSS_INIT:
 
-				bag->positionInWorld(x_pos_bag, "bag", bag_cm);
-				//cout << x_pos_bag.transpose() << "\n";
-				//x_pos_bag << 0.8, 0, 0.3;
-				//x_pos_bag[1] = 0;
-				robot->positionInWorld(x_pos_rh, "ra_link6");
-
 				//cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
 				// cout << "Cross" << endl;
 				//update posori task
@@ -358,38 +333,7 @@ int main() {
 				q_desired = q_init_desired;
 				q_desired = cross_posture(q_desired);
 
-				// Set joint task posture to cross
-				joint_task->_desired_position = q_desired;
-
-				// calculate torques to fix the feet
-				N_prec.setIdentity();
-				posori_task_footR->updateTaskModel(N_prec);
-				posori_task_footR->computeTorques(posori_task_torques_footR);
-
-				N_prec = posori_task_footR->_N;
-				posori_task_footL->updateTaskModel(N_prec);
-				posori_task_footL->computeTorques(posori_task_torques_footL);
-
-				N_prec = posori_task_footL->_N;
-				posori_task_handR->updateTaskModel(N_prec);
-				posori_task_handR->computeTorques(posori_task_torques_handR);
-
-				N_prec = posori_task_handR->_N;
-				// posori_task_head->updateTaskModel(N_prec);
-				// posori_task_head->computeTorques(posori_task_torques_head);
-
-
-				// N_prec = posori_task_head->_N;
-				joint_task->updateTaskModel(N_prec);
-				joint_task->computeTorques(joint_task_torques);
-
-				// calculate gravity torques (if needed)
-				robot->gravityVector(g);
-
-				// calculate command torques
-				command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handR + joint_task_torques;
 				//cout << (x_pos_bag - x_pos_rh).squaredNorm() << endl;
-
 				if ((x_pos_bag - x_pos_rh).squaredNorm() < 0.05){
 					state = NEUTRAL;
 					cout << "NEUTRAL" << endl;
@@ -397,12 +341,6 @@ int main() {
 				break;
 
 			case JAB_INIT:
-
-				bag->positionInWorld(x_pos_bag, "bag", bag_cm);
-				//cout << x_pos_bag.transpose() << "\n";
-				//x_pos_bag[1] = 0;
-				//x_pos_bag << 1, 0, 0.3;
-				robot->positionInWorld(x_pos_rh, "la_link6");
 
 				//cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
 				// cout << "Jab" << endl;
@@ -413,42 +351,36 @@ int main() {
 				q_desired = q_init_desired;
 				q_desired = jab_posture(q_desired);
 
-				// Set joint task posture to cross
-				joint_task->_desired_position = q_desired;
-
-				// calculate torques to fix the feet
-				N_prec.setIdentity();
-				posori_task_footR->updateTaskModel(N_prec);
-				posori_task_footR->computeTorques(posori_task_torques_footR);
-
-				N_prec = posori_task_footR->_N;
-				posori_task_footL->updateTaskModel(N_prec);
-				posori_task_footL->computeTorques(posori_task_torques_footL);
-
-				N_prec = posori_task_footL->_N;
-				posori_task_handL->updateTaskModel(N_prec);
-				posori_task_handL->computeTorques(posori_task_torques_handL);
-
-				// calculate torques to move left hand
-				N_prec = posori_task_handL->_N;
-
-				joint_task->updateTaskModel(N_prec);
-				joint_task->computeTorques(joint_task_torques);
-
-				// calculate gravity torques (if needed)
-				robot->gravityVector(g);
-
-				// calculate command torques
-				command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handL + joint_task_torques;
 				//cout << (x_pos_bag - x_pos_rh).squaredNorm() << endl;
-
 				if ((x_pos_bag - x_pos_rh).squaredNorm() < 0.05){
 					state = NEUTRAL;
 					cout << "Neutral" << endl;
 				}
 				break;
 
-		}
+		} // Each state returns q_desired
+
+		// Set joint task posture from state
+		joint_task->_desired_position = q_desired;
+
+		// calculate torques to fix the feet
+		N_prec.setIdentity();
+		posori_task_footR->updateTaskModel(N_prec);
+		posori_task_footR->computeTorques(posori_task_torques_footR);
+
+		N_prec = posori_task_footR->_N;
+		posori_task_footL->updateTaskModel(N_prec);
+		posori_task_footL->computeTorques(posori_task_torques_footL);
+
+		N_prec = posori_task_footL->_N;
+		joint_task->updateTaskModel(N_prec);
+		joint_task->computeTorques(joint_task_torques);
+
+		// calculate gravity torques (if needed)
+		robot->gravityVector(g);
+
+		// calculate command torques
+		command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
 
 		// posori_task_handR->updateTaskModel(N_prec);
 		// posori_task_handR->computeTorques(posori_task_torques_handR);
@@ -522,6 +454,8 @@ int main() {
 //------------------------------- Functions -------------------------------//
 //------------------------------- Functions -------------------------------//
 //------------------------------- Functions -------------------------------//
+
+
 
 VectorXd orthodox_posture(VectorXd q_desired) {
 
