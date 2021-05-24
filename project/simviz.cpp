@@ -22,7 +22,7 @@ using namespace std;
 using namespace Eigen;
 
 const double clock_delay_factor = 10;
-const int timeDilationFactor = 20;
+const int timeDilationFactor = 10;
 
 const string world_file = "./resources/world.urdf";
 const string robot_file = "./resources/toro.urdf";

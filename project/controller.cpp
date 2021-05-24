@@ -21,7 +21,6 @@ using namespace Eigen;
 const string robot_file = "./resources/toro.urdf";
 const string bag_file = "./resources/punching_bag.urdf";
 
-
 // redis keys:
 // - read:
 const std::string JOINT_ANGLES_KEY = "sai2::cs225a::project::sensors::q";
@@ -93,6 +92,7 @@ int main() {
 	VectorXd command_torques = VectorXd::Zero(dof);
 	// Vector3d bag_torques = Vector3d::Zero();
 	MatrixXd N_prec = MatrixXd::Identity(dof, dof);
+	MatrixXd N_prec_arm = MatrixXd::Identity(dof, dof);
 
 	// Edit kp and kv values
 	double kp_foot = 200;
@@ -277,7 +277,7 @@ int main() {
 	bool fTimerDidSleep = true;
 
 	// Initialize useful vectors
-	Vector3d bag_cm = R_world_bag*Vector3d(0, 1, 0);
+	Vector3d bag_cm = R_world_bag*Vector3d(0, 0.8, 0);
 	Vector3d x_pos_rf;
 	Vector3d x_pos_lf;
 	Vector3d x_pos_rh;
@@ -300,12 +300,15 @@ int main() {
 		// sensing world
 		bag->positionInWorld(x_pos_bag, "bag", bag_cm);
 		robot->positionInWorld(x_pos_rh, "ra_link6");
+		robot->positionInWorld(x_pos_lh, "la_link6");
 
 		switch(state){ // Needs x_pos_bag, x_pos_rh
 			case NEUTRAL:
 				// Define Orthodox posture
 				q_desired = q_init_desired;
 				q_desired = orthodox_posture(q_desired);
+
+				N_prec_arm.setIdentity();
 
 				//cout << (robot->_q - q_desired).squaredNorm() << endl;
 				if ((robot->_q - q_desired).squaredNorm() < 0.04){
@@ -315,7 +318,6 @@ int main() {
 						cout << "Cross Init" << endl;
 					}
 					else{
-						// state = JAB_INIT;
 						state = JAB_INIT;
 						cout << "Jab Init" << endl;
 					}
@@ -332,16 +334,17 @@ int main() {
 				q_desired = q_init_desired;
 				q_desired = cross_posture(q_desired);
 
-				//cout << (x_pos_bag - x_pos_rh).squaredNorm() << endl;
+				N_prec_arm = posori_task_handR->_N;
+
+				cout << (x_pos_bag - x_pos_rh).squaredNorm() << endl;
 				if ((x_pos_bag - x_pos_rh).squaredNorm() < 0.05){
 					state = NEUTRAL;
-					cout << "NEUTRAL" << endl;
+					cout << "Neutral" << endl;
 				}
 				break;
 
 			case JAB_INIT:
-
-				// cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
+				// cout << x_pos_bag.transpose() << " " << x_pos_lh.transpose() << endl;
 				// cout << "Jab" << endl;
 				// Update posori task
 				posori_task_handL->_desired_position = x_pos_bag;
@@ -350,20 +353,23 @@ int main() {
 				q_desired = q_init_desired;
 				q_desired = jab_posture(q_desired);
 
-				//cout << (x_pos_bag - x_pos_rh).squaredNorm() << endl;
-				if ((x_pos_bag - x_pos_rh).squaredNorm() < 0.05){
+				N_prec_arm = posori_task_handL->_N;
+
+				cout << (x_pos_bag - x_pos_lh).squaredNorm() << endl;
+				if ((x_pos_bag - x_pos_lh).squaredNorm() < 0.05){
 					state = NEUTRAL;
 					cout << "Neutral" << endl;
 				}
 				break;
 
-		} // Each state returns q_desired
+		} // Each state returns q_desired, posori_tasks
 
 		// Set joint task posture from state
 		joint_task->_desired_position = q_desired;
 
 		// calculate torques to fix the feet
 		N_prec.setIdentity();
+
 		posori_task_footR->updateTaskModel(N_prec);
 		posori_task_footR->computeTorques(posori_task_torques_footR);
 
@@ -375,8 +381,12 @@ int main() {
 		joint_task->updateTaskModel(N_prec);
 		joint_task->computeTorques(joint_task_torques);
 
+		// punch
+		joint_task->updateTaskModel(N_prec_arm);
+		joint_task->computeTorques(joint_task_torques);
+
 		// calculate gravity torques (if needed)
-		robot->gravityVector(g);
+		// robot->gravityVector(g);
 
 		// calculate command torques
 		command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
@@ -425,8 +435,6 @@ int main() {
 //------------------------------- Functions -------------------------------//
 //------------------------------- Functions -------------------------------//
 //------------------------------- Functions -------------------------------//
-
-
 
 VectorXd orthodox_posture(VectorXd q_desired) {
 
