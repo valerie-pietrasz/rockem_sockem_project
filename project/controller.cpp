@@ -323,10 +323,9 @@ int main() {
 				break;
 
 			case CROSS_INIT:
-
-				//cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
+				// cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
 				// cout << "Cross" << endl;
-				//update posori task
+				// Update posori task
 				posori_task_handR->_desired_position = x_pos_bag;
 
 				// Define cross posture
@@ -342,9 +341,9 @@ int main() {
 
 			case JAB_INIT:
 
-				//cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
+				// cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
 				// cout << "Jab" << endl;
-				//update posori task
+				// Update posori task
 				posori_task_handL->_desired_position = x_pos_bag;
 
 				// Define cross posture
@@ -381,34 +380,6 @@ int main() {
 
 		// calculate command torques
 		command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
-
-		// posori_task_handR->updateTaskModel(N_prec);
-		// posori_task_handR->computeTorques(posori_task_torques_handR);
-
-		// // calculate torques to move left hand
-		// N_prec = posori_task_handR->_N;
-		// posori_task_handL->updateTaskModel(N_prec);
-		// posori_task_handL->computeTorques(posori_task_torques_handL);
-
-		// // calculate torques to move head
-		// N_prec = posori_task_handL->_N;
-		// posori_task_head->updateTaskModel(N_prec);
-		// posori_task_head->computeTorques(posori_task_torques_head);
-
-		// // calculate torques to maintain joint posture
-		// N_prec = posori_task_head->_N;
-		//joint_task->updateTaskModel(N_prec);
-		//joint_task->computeTorques(joint_task_torques);
-
-		// calculate gravity torques (if needed)
-		//robot->gravityVector(g);
-
-		// calculate torques
-		// command_torques = posori_task_torques_footR + posori_task_torques_footL + \
-		// 					posori_task_torques_handR + posori_task_torques_handL + \
-		// 					posori_task_torques_head + joint_task_torques;  // gravity compensation handled in sim
-		// command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
-		// command_torques = joint_task_torques;
 
 		// PUNCHING BAG //
 		// if needed, read bag state from redis, like so:
