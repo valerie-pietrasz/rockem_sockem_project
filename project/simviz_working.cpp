@@ -5,11 +5,10 @@
 #include <dynamics3d.h>
 #include "redis/RedisClient.h"
 #include "timer/LoopTimer.h"
-#include <GLFW/glfw3.h>  // must be loaded after loading opengl/glew
-#include "uiforce/UIForceWidget.h"  // used for right-click drag interaction in window
-#include <random>  // used for white-noise generation
-#include "force_sensor/ForceSensorSim.h"  // references src folder in sai2-common directory
-#include "force_sensor/ForceSensorDisplay.h"
+
+#include <GLFW/glfw3.h> //must be loaded after loading opengl/glew
+
+#include "uiforce/UIForceWidget.h"
 
 #include <iostream>
 #include <string>
@@ -17,8 +16,6 @@
 #include <signal.h>
 bool fSimulationRunning = false;
 void sighandler(int){fSimulationRunning = false;}
-bool fSimulationLoopDone = false;
-bool fControllerLoopDone = true; // initialize as true for first loop
 
 using namespace std;
 using namespace Eigen;
@@ -34,7 +31,7 @@ const string bag_name = "punching_bag";
 // const string env_name = "env";
 const string camera_name = "camera_fixed";
 
-const int timeDilationFactor = 1;
+const int timeDilationFactor = 20;
 
 // redis keys:
 // - write:
@@ -42,16 +39,9 @@ const std::string JOINT_ANGLES_KEY = "sai2::cs225a::project::sensors::q";
 const std::string JOINT_VELOCITIES_KEY = "sai2::cs225a::project::sensors::dq";
 // - read
 const std::string JOINT_TORQUES_COMMANDED_KEY = "sai2::cs225a::project::actuators::fgc";
-// const std::string PUNCHING_BAG_COMMANDED_KEY = "sai2::cs225a::project::actuators::bag";
-// - read + write
-const std::string SIMULATION_LOOP_DONE_KEY = "cs225a::simulation::done";
-const std::string CONTROLLER_LOOP_DONE_KEY = "cs225a::controller::done";
+const std::string PUNCHING_BAG_COMMANDED_KEY = "sai2::cs225a::project::actuators::bag";
 
 RedisClient redis_client;
-
-// functions for converting bool <--> string
-bool string_to_bool(const std::string& x);
-inline const char * const bool_to_string(bool b);
 
 // simulation function prototype
 void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulation::Sai2Simulation* sim, UIForceWidget *ui_force_widget);
@@ -161,13 +151,6 @@ int main() {
 
 	// cache variables
 	double last_cursorx, last_cursory;
-
-	// init redis client values
-	redis_client.setEigenMatrixJSON(JOINT_ANGLES_KEY, robot->_q);
-	redis_client.setEigenMatrixJSON(JOINT_VELOCITIES_KEY, robot->_dq);
-	// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, //add correct variable here);
-	redis_client.set(SIMULATION_LOOP_DONE_KEY, bool_to_string(fSimulationLoopDone));
-	redis_client.set(CONTROLLER_LOOP_DONE_KEY, bool_to_string(fControllerLoopDone));
 
 	// initialize glew
 	glewInitialize();
@@ -281,10 +264,8 @@ int main() {
 		}
 	}
 
-	// wait for simulation to finish
+	// stop simulation
 	fSimulationRunning = false;
-	fSimulationLoopDone = false;
-	redis_client.set(SIMULATION_LOOP_DONE_KEY, bool_to_string(fSimulationLoopDone));
 	sim_thread.join();
 
 	// destroy context
@@ -304,17 +285,13 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 	VectorXd command_torques = VectorXd::Zero(dof);
 	VectorXd bag_torques = VectorXd::Zero(3);
 
-	// setup redis client data container for pipeset (batch write)
-	std::vector<std::pair<std::string, std::string>> redis_data(5);  // set with the number of keys to write
-
 	redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
-	// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, bag_torques);
+	redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, bag_torques);
 
 	// create a timer
 	LoopTimer timer;
 	timer.initializeTimer();
 	timer.setLoopFrequency(1000);
-	double start_time = timer.elapsedTime() / timeDilationFactor ; // secs
 	double last_time = timer.elapsedTime(); //secs
 	bool fTimerDidSleep = true;
 
@@ -328,80 +305,55 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 	Eigen::VectorXd ui_force_command_torques;
 	ui_force_command_torques.setZero();
 
-	unsigned long long counter = 0;
-
-	fSimulationRunning = true;
 	while (fSimulationRunning) {
+		// fTimerDidSleep = timer.waitForNextLoop();
 
-		if (fControllerLoopDone || fRobotLinkSelect) {
+		// get gravity torques
+		robot->gravityVector(robot_g);
+		bag->gravityVector(bag_g);
 
-			// get gravity torques
-			robot->gravityVector(robot_g);
-			bag->gravityVector(bag_g);
+		// read arm torques from redis and apply to simulated robot
+		command_torques = redis_client.getEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY);
+		bag_torques = redis_client.getEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY);
 
-			// read arm torques from redis and apply to simulated robot
-			command_torques = redis_client.getEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY);
-			// bag_torques = redis_client.getEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY);
+		ui_force_widget->getUIForce(ui_force);
+		ui_force_widget->getUIJointTorques(ui_force_command_torques);
 
-			ui_force_widget->getUIForce(ui_force);
-			ui_force_widget->getUIJointTorques(ui_force_command_torques);
-
-			if (fRobotLinkSelect) {
-				sim->setJointTorques(robot_name, command_torques + ui_force_command_torques + robot_g);
-				sim->setJointTorques(bag_name, ui_force_command_torques -30*bag->_dq);
-			}
-			else {
-				sim->setJointTorques(robot_name, command_torques + robot_g);
-				sim->setJointTorques(bag_name, ui_force_command_torques -30*bag->_dq);
-			}
-
-			// integrate forward
-			double curr_time = timer.elapsedTime();
-			double loop_dt = curr_time - last_time;
-			sim->integrate(loop_dt/timeDilationFactor);
-
-			// read joint positions, velocities, update model
-			sim->getJointPositions(robot_name, robot->_q);
-			sim->getJointVelocities(robot_name, robot->_dq);
-			robot->updateModel();
-			sim->getJointPositions(bag_name, bag->_q);
-			sim->getJointVelocities(bag_name, bag->_dq);
-			bag->updateModel();
-
-			// write new robot state to redis
-			redis_data.at(0) = std::pair<string, string>(JOINT_TORQUES_COMMANDED_KEY, redis_client.encodeEigenMatrixJSON(command_torques));
-			redis_data.at(2) = std::pair<string, string>(JOINT_ANGLES_KEY, redis_client.encodeEigenMatrixJSON(robot->_q));
-			redis_data.at(3) = std::pair<string, string>(JOINT_VELOCITIES_KEY, redis_client.encodeEigenMatrixJSON(robot->_dq));
-
-			redis_client.pipeset(redis_data);
-
-			// wait until all GL commands are completed
-			glFinish();
-
-			// // check for any OpenGL errors
-			// GLenum err;
-			// err = glGetError();
-			// assert(err == GL_NO_ERROR);
-			//
-			// // poll for events
-			// glfwPollEvents();
-
-			//update last time
-			last_time = curr_time;
-
-			++ counter;
+		if (fRobotLinkSelect) {
+			sim->setJointTorques(robot_name, command_torques + ui_force_command_torques + robot_g);
+			sim->setJointTorques(bag_name, ui_force_command_torques -30*bag->_dq);
+		}
+		else {
+			sim->setJointTorques(robot_name, command_torques + robot_g);
+			sim->setJointTorques(bag_name, ui_force_command_torques -30*bag->_dq);
 		}
 
-		// read controller state
-    fControllerLoopDone = string_to_bool(redis_client.get(CONTROLLER_LOOP_DONE_KEY));
+		// integrate forward
+		double curr_time = timer.elapsedTime();
+		double loop_dt = curr_time - last_time;
+		sim->integrate(loop_dt/timeDilationFactor);
 
+		// read joint positions, velocities, update model
+		sim->getJointPositions(robot_name, robot->_q);
+		sim->getJointVelocities(robot_name, robot->_dq);
+		robot->updateModel();
+		sim->getJointPositions(bag_name, bag->_q);
+		sim->getJointVelocities(bag_name, bag->_dq);
+		bag->updateModel();
+
+		// write new robot state to redis
+		redis_client.setEigenMatrixJSON(JOINT_ANGLES_KEY, robot->_q);
+		redis_client.setEigenMatrixJSON(JOINT_VELOCITIES_KEY, robot->_dq);
+
+		//update last time
+		last_time = curr_time;
 	}
 
 	double end_time = timer.elapsedTime();
-	cout << "\n";
-	cout << "Simulation Loop run time  : " << end_time << " seconds\n";
-	cout << "Simulation Loop updates   : " << counter << "\n";
-
+	std::cout << "\n";
+	std::cout << "Simulation Loop run time  : " << end_time << " seconds\n";
+	std::cout << "Simulation Loop updates   : " << timer.elapsedCycles() << "\n";
+	std::cout << "Simulation Loop frequency : " << timer.elapsedCycles()/end_time << "Hz\n";
 }
 
 //------------------------------------------------------------------------------
@@ -488,14 +440,4 @@ void mouseClick(GLFWwindow* window, int button, int action, int mods) {
 		default:
 			break;
 	}
-}
-
-bool string_to_bool(const std::string& x) {
-  assert(x == "false" || x == "true");
-  return x == "true";
-}
-
-inline const char * const bool_to_string(bool b)
-{
-  return b ? "true" : "false";
 }

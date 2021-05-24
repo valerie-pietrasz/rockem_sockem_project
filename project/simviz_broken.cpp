@@ -11,9 +11,6 @@
 #include "force_sensor/ForceSensorSim.h"  // references src folder in sai2-common directory
 #include "force_sensor/ForceSensorDisplay.h"
 
-#include <iostream>
-#include <string>
-
 #include <signal.h>
 bool fSimulationRunning = false;
 void sighandler(int){fSimulationRunning = false;}
@@ -34,7 +31,7 @@ const string bag_name = "punching_bag";
 // const string env_name = "env";
 const string camera_name = "camera_fixed";
 
-const int timeDilationFactor = 1;
+const int timeDilationFactor = 20;
 
 // redis keys:
 // - write:
@@ -314,9 +311,10 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 	LoopTimer timer;
 	timer.initializeTimer();
 	timer.setLoopFrequency(1000);
-	double start_time = timer.elapsedTime() / timeDilationFactor ; // secs
-	double last_time = timer.elapsedTime(); //secs
+	double time_slowdown_factor = 1.0;  // adjust to higher value (i.e. 2) to slow down simulation by this factor relative to real time (for slower machines)
 	bool fTimerDidSleep = true;
+	double start_time = timer.elapsedTime() / time_slowdown_factor; // secs
+	double last_time = start_time;
 
 	// init variables
 	VectorXd robot_g = VectorXd::Zero(dof);
@@ -348,11 +346,11 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 
 			if (fRobotLinkSelect) {
 				sim->setJointTorques(robot_name, command_torques + ui_force_command_torques + robot_g);
-				sim->setJointTorques(bag_name, ui_force_command_torques -30*bag->_dq);
+				sim->setJointTorques(bag_name, ui_force_command_torques - 30*bag->_dq);
 			}
 			else {
 				sim->setJointTorques(robot_name, command_torques + robot_g);
-				sim->setJointTorques(bag_name, ui_force_command_torques -30*bag->_dq);
+				sim->setJointTorques(bag_name, ui_force_command_torques - 30*bag->_dq);
 			}
 
 			// integrate forward
@@ -369,7 +367,7 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 			bag->updateModel();
 
 			// write new robot state to redis
-			redis_data.at(0) = std::pair<string, string>(JOINT_TORQUES_COMMANDED_KEY, redis_client.encodeEigenMatrixJSON(command_torques));
+			// redis_data.at(0) = std::pair<string, string>(JOINT_TORQUES_COMMANDED_KEY, command_torques);
 			redis_data.at(2) = std::pair<string, string>(JOINT_ANGLES_KEY, redis_client.encodeEigenMatrixJSON(robot->_q));
 			redis_data.at(3) = std::pair<string, string>(JOINT_VELOCITIES_KEY, redis_client.encodeEigenMatrixJSON(robot->_dq));
 
@@ -378,13 +376,13 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 			// wait until all GL commands are completed
 			glFinish();
 
-			// // check for any OpenGL errors
-			// GLenum err;
-			// err = glGetError();
-			// assert(err == GL_NO_ERROR);
-			//
-			// // poll for events
-			// glfwPollEvents();
+			// check for any OpenGL errors
+			GLenum err;
+			err = glGetError();
+			assert(err == GL_NO_ERROR);
+
+			// poll for events
+			glfwPollEvents();
 
 			//update last time
 			last_time = curr_time;
@@ -401,7 +399,7 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 	cout << "\n";
 	cout << "Simulation Loop run time  : " << end_time << " seconds\n";
 	cout << "Simulation Loop updates   : " << counter << "\n";
-
+	// cout << "Simulation Loop frequency : " << timer.elapsedCycles()/end_time << "Hz\n";
 }
 
 //------------------------------------------------------------------------------
