@@ -288,7 +288,6 @@ int main() {
 	sim_thread.join();
 
 	// destroy context
-	glfwSetWindowShouldClose(window,GL_TRUE);
 	glfwDestroyWindow(window);
 
 	// terminate
@@ -303,9 +302,6 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 	int dof = robot->dof();
 	VectorXd command_torques = VectorXd::Zero(dof);
 	VectorXd bag_torques = VectorXd::Zero(3);
-
-	// setup redis client data container for pipeset (batch write)
-	std::vector<std::pair<std::string, std::string>> redis_data(5);  // set with the number of keys to write
 
 	redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
 	// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, bag_torques);
@@ -328,6 +324,9 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 	Eigen::VectorXd ui_force_command_torques;
 	ui_force_command_torques.setZero();
 
+	// setup redis client data container for pipeset (batch write)
+	std::vector<std::pair<std::string, std::string>> redis_data(5);  // set with the number of keys to write
+
 	unsigned long long counter = 0;
 
 	fSimulationRunning = true;
@@ -340,7 +339,12 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 			bag->gravityVector(bag_g);
 
 			// read arm torques from redis and apply to simulated robot
-			command_torques = redis_client.getEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY);
+			if (fControllerLoopDone) {
+				command_torques = redis_client.getEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY);
+			}
+			else {
+				command_torques.setZero();
+			}
 			// bag_torques = redis_client.getEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY);
 
 			ui_force_widget->getUIForce(ui_force);
@@ -358,7 +362,7 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 			// integrate forward
 			double curr_time = timer.elapsedTime();
 			double loop_dt = curr_time - last_time;
-			sim->integrate(loop_dt/timeDilationFactor);
+			sim->integrate(0.001); // integrate at 1 kHz
 
 			// read joint positions, velocities, update model
 			sim->getJointPositions(robot_name, robot->_q);
@@ -368,28 +372,25 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 			sim->getJointVelocities(bag_name, bag->_dq);
 			bag->updateModel();
 
+			// simulation loop is done
+	    fSimulationLoopDone = true;
+
+      // ask for next control loop
+      fControllerLoopDone = false;
+
 			// write new robot state to redis
 			redis_data.at(0) = std::pair<string, string>(JOINT_TORQUES_COMMANDED_KEY, redis_client.encodeEigenMatrixJSON(command_torques));
-			redis_data.at(2) = std::pair<string, string>(JOINT_ANGLES_KEY, redis_client.encodeEigenMatrixJSON(robot->_q));
-			redis_data.at(3) = std::pair<string, string>(JOINT_VELOCITIES_KEY, redis_client.encodeEigenMatrixJSON(robot->_dq));
+			redis_data.at(1) = std::pair<string, string>(JOINT_ANGLES_KEY, redis_client.encodeEigenMatrixJSON(robot->_q));
+			redis_data.at(2) = std::pair<string, string>(JOINT_VELOCITIES_KEY, redis_client.encodeEigenMatrixJSON(robot->_dq));
+			redis_data.at(3) = std::pair<string, string>(SIMULATION_LOOP_DONE_KEY, bool_to_string(fSimulationLoopDone));
+			redis_data.at(4) = std::pair<string, string>(CONTROLLER_LOOP_DONE_KEY, bool_to_string(fControllerLoopDone)); // ask for next control loop
 
 			redis_client.pipeset(redis_data);
 
-			// wait until all GL commands are completed
-			glFinish();
-
-			// // check for any OpenGL errors
-			// GLenum err;
-			// err = glGetError();
-			// assert(err == GL_NO_ERROR);
-			//
-			// // poll for events
-			// glfwPollEvents();
-
-			//update last time
+			// update last time
 			last_time = curr_time;
 
-			++ counter;
+			++counter;
 		}
 
 		// read controller state

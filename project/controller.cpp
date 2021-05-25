@@ -1,7 +1,3 @@
-// This example application loads a URDF world file and simulates two robots
-// with physics and contact in a Dynamics3D virtual world. A graphics model of it is also shown using
-// Chai3D.
-
 #include "Sai2Model.h"
 #include "redis/RedisClient.h"
 #include "timer/LoopTimer.h"
@@ -50,8 +46,6 @@ const std::string MASSMATRIX_KEY;
 const std::string CORIOLIS_KEY;
 const std::string ROBOT_GRAVITY_KEY;
 
-unsigned long long controller_counter = 0;
-
 const bool inertia_regularization = true;
 
 // Function prototypes //
@@ -69,8 +63,9 @@ bool string_to_bool(const std::string& x);
 
 int main() {
 
+	// Make sure redis-server is running at localhost with default port 6379
 	// start redis client
-	auto redis_client = RedisClient();
+	RedisClient redis_client = RedisClient();
 	redis_client.connect();
 
 	// set up signal handler
@@ -224,7 +219,6 @@ int main() {
 	// posori_task_handR->_desired_orientation = AngleAxisd(M_PI/2, Vector3d::UnitX()).toRotationMatrix() * \
 	// 											AngleAxisd(-M_PI/2, Vector3d::UnitY()).toRotationMatrix() * x_ori;
 
-
 	// pose task for head
 	control_link = "neck_link2";
 	control_point = Vector3d(0,0,0);
@@ -350,15 +344,15 @@ int main() {
 					//cout << (robot->_q - q_desired).squaredNorm() << endl;
 
 					// cout << "Neutral" << endl;
-					if ((robot->_q - q_desired).squaredNorm() < 0.04){
-						randomPunch = rand() % 2;
-						if (randomPunch == 0){
-							state = CROSS_INIT;
-						}
-						else{
-							state = JAB_INIT;
-						}
-					}
+					// if ((robot->_q - q_desired).squaredNorm() < 0.04){
+					// 	randomPunch = rand() % 2;
+					// 	if (randomPunch == 0){
+					// 		state = CROSS_INIT;
+					// 	}
+					// 	else{
+					// 		state = JAB_INIT;
+					// 	}
+					// }
 					break;
 
 				case CROSS_INIT:
@@ -465,43 +459,11 @@ int main() {
 
 			}
 
-			// posori_task_handR->updateTaskModel(N_prec);
-			// posori_task_handR->computeTorques(posori_task_torques_handR);
-
-			// // calculate torques to move left hand
-			// N_prec = posori_task_handR->_N;
-			// posori_task_handL->updateTaskModel(N_prec);
-			// posori_task_handL->computeTorques(posori_task_torques_handL);
-
-			// // calculate torques to move head
-			// N_prec = posori_task_handL->_N;
-			// posori_task_head->updateTaskModel(N_prec);
-			// posori_task_head->computeTorques(posori_task_torques_head);
-
-			// // calculate torques to maintain joint posture
-			// N_prec = posori_task_head->_N;
-			//joint_task->updateTaskModel(N_prec);
-			//joint_task->computeTorques(joint_task_torques);
-
-			// calculate gravity torques (if needed)
-			//robot->gravityVector(g);
-
-			// calculate torques
-			// command_torques = posori_task_torques_footR + posori_task_torques_footL + \
-			// 					posori_task_torques_handR + posori_task_torques_handL + \
-			// 					posori_task_torques_head + joint_task_torques;  // gravity compensation handled in sim
-			// command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
-			// command_torques = joint_task_torques;
-
 			// PUNCHING BAG //
 			// if needed, read bag state from redis, like so:
 			// robot->_q = redis_client.getEigenMatrixJSON(JOINT_ANGLES_KEY);
 
 			bag->updateModel();
-
-			// send to redis
-			redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
-			// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, bag_torques);
 
 			//test tracking foot position with only joint task torques to choose posori targets
 			// Vector3d x_pos_rf;
@@ -521,8 +483,16 @@ int main() {
 
 			// std::cout << "Z actuation position : " << q_desired[2] << "\n";
 
+			// send to redis
+			redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
+			// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, bag_torques);
+
+			// ask for next simulation loop
+			fSimulationLoopDone = false;
+			redis_client.set(SIMULATION_LOOP_DONE_KEY, bool_to_string(fSimulationLoopDone));
+
 			//increment
-			controller_counter++;
+			++counter;
 		}
 
 		// controller loop is done
@@ -541,8 +511,7 @@ int main() {
 	double end_time = timer.elapsedTime();
   std::cout << "\n";
   std::cout << "Controller Loop run time  : " << end_time << " seconds\n";
-  std::cout << "Controller Loop updates   : " << timer.elapsedCycles() << "\n";
-  std::cout << "Controller Loop frequency : " << timer.elapsedCycles()/end_time << "Hz\n";
+  std::cout << "Controller Loop updates   : " << counter << "\n";
 
 	return 0;
 }
