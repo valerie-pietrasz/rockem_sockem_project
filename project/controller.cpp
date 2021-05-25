@@ -273,13 +273,6 @@ int main() {
 	// gravity vector
 	VectorXd g(dof);
 
-	// create a timer // TODO: Delete once I've merged
-	// LoopTimer timer;
-	// timer.initializeTimer();
-	// timer.setLoopFrequency(200);
-	// double start_time = timer.elapsedTime(); //secs
-	// bool fTimerDidSleep = true;
-
 	// Initialize useful vectors
 	Vector3d bag_cm = R_world_bag*Vector3d(0, 0.8, 0);
 	Vector3d x_pos_rf;
