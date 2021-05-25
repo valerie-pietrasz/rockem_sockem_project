@@ -23,7 +23,7 @@ bool fControllerLoopDone = true; // initialize as true for first loop
 using namespace std;
 using namespace Eigen;
 
-const double clock_delay_factor = 10;
+const int timeDilationFactor = 10;
 
 const string world_file = "./resources/world.urdf";
 const string robot_file = "./resources/toro.urdf";
@@ -33,8 +33,6 @@ const string robot_name = "DLR_TORO";
 const string bag_name = "punching_bag";
 // const string env_name = "env";
 const string camera_name = "camera_fixed";
-
-const int timeDilationFactor = 1;
 
 // redis keys:
 // - write:
