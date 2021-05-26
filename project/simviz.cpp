@@ -96,9 +96,9 @@ int main() {
 	// load robots
 	auto robot = new Sai2Model::Sai2Model(robot_file, false);
 	Matrix3d R_world_bag;
-	R_world_bag = AngleAxisd(M_PI/2, Vector3d::UnitX())
+	R_world_bag = AngleAxisd(M_PI/2, Vector3d::UnitZ())
 								* AngleAxisd(0.0, Vector3d::UnitY())
-								* AngleAxisd(M_PI/2, Vector3d::UnitZ());
+								* AngleAxisd(M_PI/2, Vector3d::UnitX());
 	Affine3d T_world_bag = Affine3d::Identity();
 	T_world_bag.translation() = Vector3d(0.75, 0, 0.82);
 	T_world_bag.linear() = R_world_bag;
@@ -117,7 +117,7 @@ int main() {
 	sim->getJointVelocities(robot_name, robot->_dq);
 	robot->updateKinematics();
 
-	bag->_q = Vector3d(0,0,-M_PI/2);
+	bag->_q = Vector3d(0,0,0);
 	sim->setJointPositions(bag_name, bag->_q);
 	sim->getJointVelocities(bag_name, bag->_dq);
 	bag->updateKinematics();

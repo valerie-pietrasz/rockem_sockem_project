@@ -65,7 +65,7 @@
         </geometry>
       </visual>
       <!-- For finding the origin if needed -->
-      <!-- <visual>
+      <visual>
         <origin xyz="0 -0.8 0" rpy="0 0 0" />
         <geometry>
           <sphere radius="0.3" rgba="0.5 0.5 1"/>
@@ -73,7 +73,7 @@
         <material name="material_gray">
           <color rgba="0.3 0.3 0.5 1.0" />
         </material>
-      </visual> -->
+      </visual>
 
       <!-- Suggestions: Use cylinder primitive  -->
       <!-- http://wiki.ros.org/urdf/Tutorials/Adding%20Physical%20and%20Collision%20Properties%20to%20a%20URDF%20Model -->
