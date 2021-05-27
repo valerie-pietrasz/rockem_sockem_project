@@ -41,6 +41,7 @@ const std::string CONTROLLER_LOOP_DONE_KEY = "cs225a::controller::done";
 #define JAB_INIT 2
 #define CROSS 3
 #define JAB 4
+#define NEUTRAL_INIT 5
 
 // - model
 const std::string MASSMATRIX_KEY;
@@ -48,6 +49,8 @@ const std::string CORIOLIS_KEY;
 const std::string ROBOT_GRAVITY_KEY;
 
 const bool inertia_regularization = true;
+
+const int nsUpdateFrequency = 50; //How often the null spaces are recalculated
 
 // Function prototypes //
 void orthodox_posture(VectorXd& q_desired);
@@ -98,16 +101,18 @@ int main() {
 	VectorXd command_torques = VectorXd::Zero(dof);
 	// Vector3d bag_torques = Vector3d::Zero();
 	MatrixXd N_prec = MatrixXd::Identity(dof, dof);
+	MatrixXd N_prec_feet = MatrixXd::Identity(dof, dof);
+
 
 	// Edit kp and kv values
 	double kp_foot = 600; // 200
 	double kv_foot = 200; // 20
-	double kp_hand = 50; // 100
-	double kv_hand = 14; // 20
+	double kp_hand = 200; // 100
+	double kv_hand = 100; // 20
 	double kp_head = 25;
 	double kv_head = 10;
-	double kp_joint = 100;
-	double kv_joint = 20;
+	double kp_joint = 300;
+	double kv_joint = 100;
 
 	// record initial position of torso
 	string hip_control_link = "hip_base";
@@ -270,8 +275,8 @@ int main() {
 	VectorXd q_desired = q_init_desired;
 
 	//Initial state//
-	int state = NEUTRAL;
-	cout << "Neutral" << endl;
+	int state = NEUTRAL_INIT;
+	cout << "Neutral Init" << endl;
 	// gravity vector
 	VectorXd g(dof);
 
@@ -295,6 +300,8 @@ int main() {
 	unsigned long long counter = 0;
 
 	runloop = true;
+
+
 	while (runloop) {
 
 		// read simulation state
@@ -317,48 +324,59 @@ int main() {
 			robot->positionInWorld(x_pos_rh, "ra_link6");
 			robot->positionInWorld(x_pos_lh, "la_link6");
 
-			// calculate torques to fix the feet
-			N_prec.setIdentity();
-			posori_task_footR->updateTaskModel(N_prec);
+			// set N_prec and calculate torques to fix feet
+			if(counter % nsUpdateFrequency == 0){
+				N_prec.setIdentity();
+				posori_task_footR->updateTaskModel(N_prec);
+				N_prec = posori_task_footR->_N;
+				posori_task_footL->updateTaskModel(N_prec);
+				N_prec_feet = posori_task_footL->_N;
+			}
+
+
 			posori_task_footR->computeTorques(posori_task_torques_footR);
-
-			N_prec = posori_task_footR->_N;
-			posori_task_footL->updateTaskModel(N_prec);
 			posori_task_footL->computeTorques(posori_task_torques_footL);
-
-			N_prec = posori_task_footL->_N;
-
-			command_torques = posori_task_torques_footR + posori_task_torques_footL;
-
 			/*
 			Important: Create a selection matrix that we left-multiply N_prec by in our posori_task_handL/R
 			to select the joints to be used in the task. The rest should remain in the nullspace of N_prec.
 			*/
 			MatrixXd taskProjection = MatrixXd::Zero(dof, dof);
 			taskProjection(18, 18) = 1; // trunk
-			taskProjection(28, 28) = 1; // elbow
+			taskProjection(28, 28) = 1; // left elbow
 
 			/*
 			Important: Remove elbow from N_prec in our joint task so it can move freely when we punch.
 			Can also allow, for example, shoulder to move freely.
 			*/
 			MatrixXd jointTaskProjection = MatrixXd::Identity(dof, dof);
-			jointTaskProjection(28, 28) = 0; // elbow
+			jointTaskProjection(28, 28) = 0; // left elbow
 
 			switch(state){
 
-				case NEUTRAL:
-					// Define Orthodox posture // TODO: I think we need to better define the hip position?
+				case NEUTRAL_INIT:
+					// Define Orthodox posture //
 					q_desired = q_init_desired;
 					orthodox_posture(q_desired);
 
 					// Generate command torques
 					joint_task->_desired_position = q_desired;
-					joint_task->updateTaskModel(N_prec);
+					joint_task->updateTaskModel(N_prec_feet);
 					joint_task->computeTorques(joint_task_torques);
 
-					command_torques += joint_task_torques;
+					command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
 
+					state = NEUTRAL;
+					cout << "Neutral" << endl;
+					break;
+
+				case NEUTRAL:
+					// update the models
+					if(counter % nsUpdateFrequency == 0){
+						joint_task->updateTaskModel(N_prec_feet);
+					}
+
+					joint_task->computeTorques(joint_task_torques);					
+					command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
 					// cout << (robot->_q - q_desired).squaredNorm() << endl;
 					if ((robot->_q - q_desired).squaredNorm() < 0.04){
 						randomPunch = rand() % 2;
@@ -380,9 +398,10 @@ int main() {
 					}
 					break;
 
+
 				case CROSS_INIT:
-					cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
-					cout << "Cross" << endl;
+					// cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
+
 					// Update posori task
 					posori_task_handR->_desired_position = x_pos_bag;
 
@@ -391,29 +410,43 @@ int main() {
 					cross_posture(q_desired);
 					joint_task->_desired_position = q_desired;
 
-					posori_task_handR->updateTaskModel(N_prec);
+					posori_task_handR->updateTaskModel(N_prec_feet);
 					posori_task_handR->computeTorques(posori_task_torques_handR);
 
 					N_prec = posori_task_handR->_N;
 					joint_task->updateTaskModel(N_prec);
 					joint_task->computeTorques(joint_task_torques);
 
-					command_torques += posori_task_torques_handR + joint_task_torques;
+					command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handR + joint_task_torques;
 
+					cout << "Cross" << endl;
 					state = CROSS;
 					break;
 
 				case CROSS:
+					//update the models
+					if(counter % nsUpdateFrequency == 0){
+						posori_task_handR->_desired_position = x_pos_bag;
+						posori_task_handR->updateTaskModel(N_prec_feet);
+						N_prec = posori_task_handR->_N;
+						joint_task->updateTaskModel(N_prec);
+					}
+
+					posori_task_handR->computeTorques(posori_task_torques_handR);
+					joint_task->computeTorques(joint_task_torques);		
+
+					command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handR + joint_task_torques;			
+
 					// cout << (x_pos_bag - x_pos_rh).squaredNorm() << endl;
 					if ((x_pos_bag - x_pos_rh).squaredNorm() < 0.05){
-						state = NEUTRAL;
-						cout << "Neutral" << endl;
+						state = NEUTRAL_INIT;
+						cout << "Neutral Init" << endl;
 					}
 					break;
 
 				case JAB_INIT:
-					cout << x_pos_bag.transpose() << " " << x_pos_lh.transpose() << endl;
-					cout << "Jab" << endl;
+					// cout << x_pos_bag.transpose() << " " << x_pos_lh.transpose() << endl;
+
 					// Update posori task
 					posori_task_handL->_desired_position = x_pos_bag;
 
@@ -423,7 +456,7 @@ int main() {
 					joint_task->_desired_position = q_desired;
 
 					// posori_task_handL->updateTaskModel(taskProjection * N_prec);
-					posori_task_handL->updateTaskModel(N_prec);
+					posori_task_handL->updateTaskModel(N_prec_feet);
 					posori_task_handL->computeTorques(posori_task_torques_handL);
 
 					N_prec = posori_task_handL->_N;
@@ -431,16 +464,32 @@ int main() {
 					joint_task->updateTaskModel(N_prec);
 					joint_task->computeTorques(joint_task_torques);
 
-					command_torques += posori_task_torques_handL + joint_task_torques;
+					command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handL + joint_task_torques;
 
+					cout << "Jab" << endl;
 					state = JAB;
 					break;
 
 				case JAB:
+					//update the models with set frequency
+					if(counter % nsUpdateFrequency == 0){
+						//cout << "rows: " << N_prec_feet.rows() << " columns: " << N_prec_feet.cols() << endl;
+						posori_task_handL->_desired_position - x_pos_bag;
+						posori_task_handL->updateTaskModel(N_prec_feet);
+						N_prec = posori_task_handL->_N;
+						//cout << "N_prec rows: " << N_prec.rows() << " columns: " << N_prec.cols() << endl;
+						joint_task->updateTaskModel(N_prec);
+					}
+
+					posori_task_handL->computeTorques(posori_task_torques_handL);
+					joint_task->computeTorques(joint_task_torques);
+
+					command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handL + joint_task_torques;
+
 					// cout << (x_pos_bag - x_pos_lh).squaredNorm() << endl;
 					if ((x_pos_bag - x_pos_lh).squaredNorm() < 0.05){
-						state = NEUTRAL;
-						cout << "Neutral" << endl;
+						state = NEUTRAL_INIT;
+						cout << "Neutral Init" << endl;
 					}
 					break;
 
