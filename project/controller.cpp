@@ -36,12 +36,14 @@ const std::string SIMULATION_LOOP_DONE_KEY = "cs225a::simulation::done";
 const std::string CONTROLLER_LOOP_DONE_KEY = "cs225a::controller::done";
 
 // define states:
-#define NEUTRAL 0
-#define CROSS_INIT 1
-#define JAB_INIT 2
-#define CROSS 3
-#define JAB 4
-#define NEUTRAL_INIT 5
+#define NEUTRAL_INIT 0
+#define NEUTRAL 1
+#define DODGE_INIT 2
+#define DODGE 3
+#define CROSS_INIT 4
+#define CROSS 5
+#define JAB_INIT 6
+#define JAB 7
 
 // - model
 const std::string MASSMATRIX_KEY;
@@ -54,6 +56,7 @@ const int nsUpdateFrequency = 50; //How often the null spaces are recalculated
 
 // Function prototypes //
 void orthodox_posture(VectorXd& q_desired);
+void dodge_posture(VectorXd& q_desired);
 void cross_posture(VectorXd& q_desired);
 void jab_posture(VectorXd& q_desired);
 
@@ -102,7 +105,6 @@ int main() {
 	// Vector3d bag_torques = Vector3d::Zero();
 	MatrixXd N_prec = MatrixXd::Identity(dof, dof);
 	MatrixXd N_prec_feet = MatrixXd::Identity(dof, dof);
-
 
 	// Edit kp and kv values
 	double kp_foot = 600; // 200
@@ -282,11 +284,13 @@ int main() {
 
 	// Initialize useful vectors
 	Vector3d bag_cm = Vector3d(0, -0.8, 0);
+	Vector3d bag_end = Vector3d(0, -1.4, 0);
 	Vector3d x_pos_rf;
 	Vector3d x_pos_lf;
 	Vector3d x_pos_rh;
 	Vector3d x_pos_lh;
-	Vector3d x_pos_bag;
+	Vector3d x_pos_bag_cm;
+	Vector3d x_pos_bag_end;
 	int randomPunch;
 
 	// create a loop timer
@@ -300,8 +304,6 @@ int main() {
 	unsigned long long counter = 0;
 
 	runloop = true;
-
-
 	while (runloop) {
 
 		// read simulation state
@@ -320,9 +322,11 @@ int main() {
 			// robot->gravityVector(g);
 
 			// sensing world
-			bag->positionInWorld(x_pos_bag, "bag", bag_cm);
+			bag->positionInWorld(x_pos_bag_cm, "bag", bag_cm);
+			bag->positionInWorld(x_pos_bag_end, "bag", bag_end);
 			robot->positionInWorld(x_pos_rh, "ra_link6");
 			robot->positionInWorld(x_pos_lh, "la_link6");
+			robot->positionInWorld(x_pos_lf, "LL_foot");
 
 			// set N_prec and calculate torques to fix feet
 			if(counter % nsUpdateFrequency == 0){
@@ -375,9 +379,16 @@ int main() {
 						joint_task->updateTaskModel(N_prec_feet);
 					}
 
-					joint_task->computeTorques(joint_task_torques);					
+					joint_task->computeTorques(joint_task_torques);
 					command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
-					// cout << (robot->_q - q_desired).squaredNorm() << endl;
+
+					cout << (x_pos_bag_end - x_pos_lf).squaredNorm() << endl;
+
+					if ((x_pos_bag_end - x_pos_lf).squaredNorm() < 0.8){
+						state = DODGE_INIT;
+						cout << "Dodge Init" << endl;
+					}
+
 					if ((robot->_q - q_desired).squaredNorm() < 0.04){
 						randomPunch = rand() % 2;
 						if (randomPunch == 0){
@@ -398,12 +409,45 @@ int main() {
 					}
 					break;
 
+				case DODGE_INIT:
+
+					// Define dodge posture //
+					q_desired = q_init_desired;
+					dodge_posture(q_desired);
+
+					// Generate command torques
+					joint_task->_desired_position = q_desired;
+					joint_task->updateTaskModel(N_prec_feet);
+					joint_task->computeTorques(joint_task_torques);
+
+					command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
+
+					state = DODGE;
+					cout << "Dodge" << endl;
+					break;
+
+				case DODGE:
+					// update the models
+					if(counter % nsUpdateFrequency == 0){
+						joint_task->updateTaskModel(N_prec_feet);
+					}
+
+					joint_task->computeTorques(joint_task_torques);
+					command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
+
+					// cout << (robot->_q - q_desired).squaredNorm() << endl;
+					if ((robot->_q - q_desired).squaredNorm() < 0.04) {
+						state = NEUTRAL_INIT;
+						cout << "Neutral" << endl;
+					}
+					break;
+
 
 				case CROSS_INIT:
-					// cout << x_pos_bag.transpose() << " " << x_pos_rh.transpose() << endl;
+					// cout << x_pos_bag_cm.transpose() << " " << x_pos_rh.transpose() << endl;
 
 					// Update posori task
-					posori_task_handR->_desired_position = x_pos_bag;
+					posori_task_handR->_desired_position = x_pos_bag_cm;
 
 					// Define cross posture
 					q_desired = q_init_desired;
@@ -426,29 +470,29 @@ int main() {
 				case CROSS:
 					//update the models
 					if(counter % nsUpdateFrequency == 0){
-						posori_task_handR->_desired_position = x_pos_bag;
+						posori_task_handR->_desired_position = x_pos_bag_cm;
 						posori_task_handR->updateTaskModel(N_prec_feet);
 						N_prec = posori_task_handR->_N;
 						joint_task->updateTaskModel(N_prec);
 					}
 
 					posori_task_handR->computeTorques(posori_task_torques_handR);
-					joint_task->computeTorques(joint_task_torques);		
+					joint_task->computeTorques(joint_task_torques);
 
-					command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handR + joint_task_torques;			
+					command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handR + joint_task_torques;
 
-					// cout << (x_pos_bag - x_pos_rh).squaredNorm() << endl;
-					if ((x_pos_bag - x_pos_rh).squaredNorm() < 0.05){
+					// cout << (x_pos_bag_cm - x_pos_rh).squaredNorm() << endl;
+					if ((x_pos_bag_cm - x_pos_rh).squaredNorm() < 0.05){
 						state = NEUTRAL_INIT;
 						cout << "Neutral Init" << endl;
 					}
 					break;
 
 				case JAB_INIT:
-					// cout << x_pos_bag.transpose() << " " << x_pos_lh.transpose() << endl;
+					// cout << x_pos_bag_cm.transpose() << " " << x_pos_lh.transpose() << endl;
 
 					// Update posori task
-					posori_task_handL->_desired_position = x_pos_bag;
+					posori_task_handL->_desired_position = x_pos_bag_cm;
 
 					// Define cross posture
 					q_desired = q_init_desired;
@@ -474,7 +518,7 @@ int main() {
 					//update the models with set frequency
 					if(counter % nsUpdateFrequency == 0){
 						//cout << "rows: " << N_prec_feet.rows() << " columns: " << N_prec_feet.cols() << endl;
-						posori_task_handL->_desired_position - x_pos_bag;
+						posori_task_handL->_desired_position - x_pos_bag_cm;
 						posori_task_handL->updateTaskModel(N_prec_feet);
 						N_prec = posori_task_handL->_N;
 						//cout << "N_prec rows: " << N_prec.rows() << " columns: " << N_prec.cols() << endl;
@@ -486,8 +530,8 @@ int main() {
 
 					command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handL + joint_task_torques;
 
-					// cout << (x_pos_bag - x_pos_lh).squaredNorm() << endl;
-					if ((x_pos_bag - x_pos_lh).squaredNorm() < 0.05){
+					// cout << (x_pos_bag_cm- x_pos_lh).squaredNorm() << endl;
+					if ((x_pos_bag_cm- x_pos_lh).squaredNorm() < 0.05){
 						state = NEUTRAL_INIT;
 						cout << "Neutral Init" << endl;
 					}
@@ -502,21 +546,22 @@ int main() {
 			bag->updateModel();
 
 			// test tracking foot position with only joint task torques to choose posori targets
-			// Vector3d x_pos_rf;
-			// robot->positionInWorld(x_pos_rf, "RL_foot", Vector3d(0,0,0));
-			// Matrix3d x_ori_rf;
-			// robot->rotationInWorld(x_ori_rf, "RL_foot");
+			Vector3d x_pos_rf;
+			robot->positionInWorld(x_pos_rf, "RL_foot", Vector3d(0,0,0));
+			Matrix3d x_ori_rf;
+			robot->rotationInWorld(x_ori_rf, "RL_foot");
 
-			// Vector3d x_pos_lf;
-			// robot->positionInWorld(x_pos_lf, "LL_foot", Vector3d(0,0,0));
-			// Matrix3d x_ori_lf;
-			// robot->rotationInWorld(x_ori_lf, "LL_foot");
+			Vector3d x_pos_lf;
+			robot->positionInWorld(x_pos_lf, "LL_foot", Vector3d(0,0,0));
+			Matrix3d x_ori_lf;
+			robot->rotationInWorld(x_ori_lf, "LL_foot");
 
-			// redis_client.setEigenMatrixJSON(OPERATIONAL_POSITION_RF, x_pos_rf.transpose());
-			// redis_client.setEigenMatrixJSON(OPERATIONAL_POSITION_LF, x_pos_lf.transpose());
-			// redis_client.setEigenMatrixJSON(OPERATIONAL_ROTATION_RF, x_ori_rf.transpose());
-			// redis_client.setEigenMatrixJSON(OPERATIONAL_ROTATION_LF, x_ori_lf.transpose());
-			// std::cout << "Z actuation position : " << q_desired[2] << "\n";
+			redis_client.setEigenMatrixJSON(OPERATIONAL_POSITION_RF, x_pos_rf.transpose());
+			redis_client.setEigenMatrixJSON(OPERATIONAL_POSITION_LF, x_pos_lf.transpose());
+			redis_client.setEigenMatrixJSON(OPERATIONAL_ROTATION_RF, x_ori_rf.transpose());
+			redis_client.setEigenMatrixJSON(OPERATIONAL_ROTATION_LF, x_ori_lf.transpose());
+
+			std::cout << "Z actuation position : " << q_desired[2] << "\n";
 
 			// send to redis
 			redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
@@ -598,6 +643,34 @@ void orthodox_posture(VectorXd& q_desired) {
 
 	// Head
 	q_desired[31] = M_PI/6;
+}
+
+void dodge_posture(VectorXd& q_desired) {
+	orthodox_posture(q_desired);
+
+	// Overactuation
+	q_desired[2] = -0.135069;
+	q_desired[4] = -M_PI/4;
+
+	// Right Leg
+	q_desired[6] = -M_PI/16;
+	q_desired[7] = M_PI/4; // Previously 0
+	q_desired[8] = 0;
+	q_desired[9] = M_PI/4;
+	q_desired[10] = M_PI/16;
+	q_desired[11] = -M_PI/4;
+
+	// Left Leg
+	q_desired[12] = M_PI/16;
+	q_desired[13] = 0; // Previously M_PI/4
+	q_desired[14] = 0;
+	q_desired[15] = M_PI/4;
+	q_desired[16] = -M_PI/16;
+	q_desired[17] = 0;
+
+	// Trunk
+	q_desired[18] = 0;
+
 }
 
 void cross_posture(VectorXd& q_desired) {
