@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <string>
+#include <random>
 
 #include <signal.h>
 // flags for simulation and controller states
@@ -291,7 +292,17 @@ int main() {
 	Vector3d x_pos_lh;
 	Vector3d x_pos_bag_cm;
 	Vector3d x_pos_bag_end;
+	Vector3d noise;
 	int randomPunch;
+
+
+	//white noise generator
+	double noise_magnitude = .05; //change
+	const double mean = 0.0;
+    const double stddev = noise_magnitude;  // tune based on your system 
+    std::default_random_engine generator;
+    std::normal_distribution<double> dist(mean, stddev);
+	
 
 	// create a loop timer
 	double control_freq = 1000;
@@ -302,6 +313,7 @@ int main() {
 	double start_time = timer.elapsedTime(); // secs
 
 	unsigned long long counter = 0;
+	unsigned long long dodge_time = 0;
 
 	runloop = true;
 	while (runloop) {
@@ -324,6 +336,9 @@ int main() {
 			// sensing world
 			bag->positionInWorld(x_pos_bag_cm, "bag", bag_cm);
 			bag->positionInWorld(x_pos_bag_end, "bag", bag_end);
+			noise << dist(generator), dist(generator), dist(generator);
+			x_pos_bag_end += noise;
+
 			robot->positionInWorld(x_pos_rh, "ra_link6");
 			robot->positionInWorld(x_pos_lh, "la_link6");
 			robot->positionInWorld(x_pos_lf, "LL_foot");
@@ -355,6 +370,9 @@ int main() {
 			MatrixXd jointTaskProjection = MatrixXd::Identity(dof, dof);
 			jointTaskProjection(28, 28) = 0; // left elbow
 
+			cout << (x_pos_bag_end - x_pos_lf).squaredNorm() << endl;
+			cout << "noise" << '\t' << noise << endl;
+
 			switch(state){
 
 				case NEUTRAL_INIT:
@@ -382,9 +400,9 @@ int main() {
 					joint_task->computeTorques(joint_task_torques);
 					command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
 
-					cout << (x_pos_bag_end - x_pos_lf).squaredNorm() << endl;
+					//cout << (x_pos_bag_end - x_pos_lf).squaredNorm() << endl;
 
-					if ((x_pos_bag_end - x_pos_lf).squaredNorm() < 0.8){
+					if ((x_pos_bag_end - x_pos_lf).squaredNorm() < 0.526 - .2){ //.526 is our steady state
 						state = DODGE_INIT;
 						cout << "Dodge Init" << endl;
 					}
@@ -410,6 +428,8 @@ int main() {
 					break;
 
 				case DODGE_INIT:
+					// start timer
+					dodge_time = 0;
 
 					// Define dodge posture //
 					q_desired = q_init_desired;
@@ -427,6 +447,11 @@ int main() {
 					break;
 
 				case DODGE:
+					//timer
+					dodge_time ++;
+					cout << dodge_time << endl;
+					//cout << (x_pos_bag_end - x_pos_lf).squaredNorm() << endl;
+
 					// update the models
 					if(counter % nsUpdateFrequency == 0){
 						joint_task->updateTaskModel(N_prec_feet);
@@ -436,7 +461,12 @@ int main() {
 					command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
 
 					// cout << (robot->_q - q_desired).squaredNorm() << endl;
-					if ((robot->_q - q_desired).squaredNorm() < 0.04) {
+					// if ((robot->_q - q_desired).squaredNorm() < 0.4) {
+					// 	state = NEUTRAL_INIT;
+					// 	cout << "Neutral" << endl;
+					// }
+
+					if(dodge_time > 1000){
 						state = NEUTRAL_INIT;
 						cout << "Neutral" << endl;
 					}
@@ -561,7 +591,7 @@ int main() {
 			redis_client.setEigenMatrixJSON(OPERATIONAL_ROTATION_RF, x_ori_rf.transpose());
 			redis_client.setEigenMatrixJSON(OPERATIONAL_ROTATION_LF, x_ori_lf.transpose());
 
-			std::cout << "Z actuation position : " << q_desired[2] << "\n";
+			// std::cout << "Z actuation position : " << q_desired[2] << "\n";
 
 			// send to redis
 			redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
@@ -763,6 +793,7 @@ void jab_posture(VectorXd& q_desired) {
 	// Head
 	q_desired[31] = M_PI/6;
 }
+
 
 bool string_to_bool(const std::string& x) {
   assert(x == "false" || x == "true");
