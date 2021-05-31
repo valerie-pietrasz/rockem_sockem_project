@@ -117,7 +117,7 @@ int main() {
 	sim->getJointVelocities(robot_name, robot->_dq);
 	robot->updateKinematics();
 
-	bag->_q = Vector3d(0,0,-M_PI/6);
+	bag->_q = Vector3d(0,0,-M_PI/12);
 	sim->setJointPositions(bag_name, bag->_q);
 	sim->getJointVelocities(bag_name, bag->_dq);
 	bag->updateKinematics();
