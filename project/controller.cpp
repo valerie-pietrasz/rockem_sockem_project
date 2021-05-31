@@ -24,10 +24,10 @@ const string bag_file = "./resources/punching_bag.urdf";
 // - read:
 const std::string JOINT_ANGLES_KEY = "sai2::cs225a::project::sensors::q";
 const std::string JOINT_VELOCITIES_KEY = "sai2::cs225a::project::sensors::dq";
-const std::string JOINT_TORQUES_SENSED_KEY; // Need to set in order to use
+const std::string PUNCHING_BAG_ANGLES_KEY = "sai2::cs225a::project::sensors::bag";
+// const std::string JOINT_TORQUES_SENSED_KEY; // Need to set in order to use
 // - write
 const std::string JOINT_TORQUES_COMMANDED_KEY = "sai2::cs225a::project::actuators::fgc";
-// const std::string PUNCHING_BAG_COMMANDED_KEY = "sai2::cs225a::project::actuators::bag";
 const std::string OPERATIONAL_POSITION_RF = "sai2::cs225a::project::operational_position_RF";
 const std::string OPERATIONAL_POSITION_LF = "sai2::cs225a::project::operational_position_LF";
 const std::string OPERATIONAL_ROTATION_RF = "sai2::cs225a::project::operational_rotation_RF";
@@ -92,11 +92,13 @@ int main() {
 								* AngleAxisd(0.0, Vector3d::UnitY())
 								* AngleAxisd(M_PI/2, Vector3d::UnitX());
 	Affine3d T_world_bag = Affine3d::Identity();
-	T_world_bag.translation() = Vector3d(0.75, 0, 0.82);
+	T_world_bag.translation() = Vector3d(0.8, 0, 0.82);
 	T_world_bag.linear() = R_world_bag;
 
 	auto bag = new Sai2Model::Sai2Model(bag_file, false, T_world_bag);
 	bag->updateModel();
+	bag->_q = Vector3d(0,0,-M_PI/12);
+	bag->updateKinematics();
 
 	//------------- Controller setup: Using full PosOriTask for head, legs, and PosiTask only for arms -------------//
 
@@ -108,14 +110,14 @@ int main() {
 	MatrixXd N_prec_feet = MatrixXd::Identity(dof, dof);
 
 	// Edit kp and kv values
-	double kp_foot = 600; // 200
-	double kv_foot = 200; // 20
-	double kp_hand = 200; // 100
-	double kv_hand = 100; // 20
-	double kp_head = 25;
-	double kv_head = 10;
-	double kp_joint = 300;
-	double kv_joint = 100;
+	double kp_foot = 600;  // 600
+	double kv_foot = 200;  // 200
+	double kp_hand = 400;  // 200
+	double kv_hand = 100;  // 100
+	double kp_head = 25;   // 25
+	double kv_head = 10;   // 10
+	double kp_joint = 300; // 300
+	double kv_joint = 100; // 100
 
 	// record initial position of torso
 	string hip_control_link = "hip_base";
@@ -184,9 +186,8 @@ int main() {
 	#ifdef USING_OTG
 		posori_task_handR->_use_interpolation_flag = false;
 		posori_task_handR->_use_velocity_saturation_flag = false;
-		// posori_task_handR->_saturation_velocity = 2;
-		// posori_task_handR->_otg->setMaxAcceleration(3);
-		// posori_task_handR->_otg->setMaxVelocity(3);
+		posori_task_handR->_otg->setMaxAcceleration(3);
+		posori_task_handR->_otg->setMaxVelocity(10);
 	#endif
 
 	VectorXd posori_task_torques_handR = VectorXd::Zero(dof);
@@ -211,12 +212,13 @@ int main() {
 
 	#ifdef USING_OTG
 		posori_task_handL->_use_interpolation_flag = false;
-	//#else
-		posori_task_handL->_use_velocity_saturation_flag = true;
+		posori_task_handL->_use_velocity_saturation_flag = false;
+		posori_task_handL->_otg->setMaxAcceleration(4);
+		posori_task_handL->_otg->setMaxVelocity(6);
 	#endif
 
 	VectorXd posori_task_torques_handL = VectorXd::Zero(dof); // check out position task primitive
-	posori_task_handL->_kp = kp_hand;
+	posori_task_handL->_kp = kp_hand + 100; // Add 100 to amp up jab compared to cross (since it starts closer to the bag);
 	posori_task_handL->_kv = kv_hand;
 	// posori_task_handL->_kp_ori = kp_hand;
 	// posori_task_handL->_kv_ori = kv_hand;
@@ -272,13 +274,12 @@ int main() {
 
 	// Initial state //
 	int state = DODGE_INIT;
-	cout << "Dodge Init" << endl;
 	// gravity vector
 	VectorXd g(dof);
 
 	// Initialize useful vectors
 	Vector3d bag_cm = Vector3d(0, -0.8, 0);
-	Vector3d bag_end = Vector3d(0, -1.4, 0);
+	Vector3d bag_end = Vector3d(0, -1.4, -0.2);
 	Vector3d x_pos_rf;
 	Vector3d x_pos_lf;
 	Vector3d x_pos_rh;
@@ -318,9 +319,11 @@ int main() {
 			// read robot state from redis
 			robot->_q = redis_client.getEigenMatrixJSON(JOINT_ANGLES_KEY);
 			robot->_dq = redis_client.getEigenMatrixJSON(JOINT_VELOCITIES_KEY);
+			bag->_q = redis_client.getEigenMatrixJSON(PUNCHING_BAG_ANGLES_KEY);
 
 			// update model
 			robot->updateModel();
+			bag->updateModel();
 			// calculate gravity torques (if needed)
 			// robot->gravityVector(g);
 
@@ -328,6 +331,7 @@ int main() {
 			bag->positionInWorld(x_pos_bag_cm, "bag", bag_cm);
 			bag->positionInWorld(x_pos_bag_end, "bag", bag_end);
 			noise << dist(generator), dist(generator), dist(generator);
+			x_pos_bag_cm += noise/2;
 			x_pos_bag_end += noise;
 
 			robot->positionInWorld(x_pos_rh, "ra_link6");
@@ -341,7 +345,6 @@ int main() {
 				posori_task_footL->updateTaskModel(N_prec);
 				N_prec_feet = posori_task_footL->_N;
 			}
-
 
 			posori_task_footR->computeTorques(posori_task_torques_footR);
 			posori_task_footL->computeTorques(posori_task_torques_footL);
@@ -360,8 +363,7 @@ int main() {
 			MatrixXd jointTaskProjection = MatrixXd::Identity(dof, dof);
 			jointTaskProjection(28, 28) = 0; // left elbow
 
-			cout << (x_pos_bag_end - x_pos_hip_init).squaredNorm() << endl;
-			// cout << "noise" << '\t' << noise.transpose() << endl;
+			// cout << (x_pos_bag_end - x_pos_hip_init).squaredNorm() << endl;
 
 			switch(state){
 
@@ -390,21 +392,22 @@ int main() {
 					joint_task->computeTorques(joint_task_torques);
 					command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
 
-					// 0.8989 is our steady state - 0.2 is a sufficiently high noise level to trigger the dodge occasionally
-					if ((x_pos_bag_end - x_pos_hip_init).squaredNorm() < 0.8989 - 0.3){
+					// cout << (x_pos_bag_end - x_pos_hip_init).squaredNorm() << endl;
+					// 0.6964 is our steady state - 0.255 is a sufficiently high noise level to trigger the dodge occasionally
+					if ((x_pos_bag_end - x_pos_hip_init).squaredNorm() < 0.6964 - 0.255){ // TODO: Play with this threshold when collisions are on.
 						state = DODGE_INIT;
-						cout << "Dodge Init" << endl;
+						// cout << "Dodge Init" << endl;
 					}
 
 					if ((robot->_q - q_desired).squaredNorm() < 0.04){
 						randomPunch = rand() % 2;
 						if (randomPunch == 0){
 							state = CROSS_INIT;
-							cout << "Cross Init" << endl;
+							// cout << "Cross Init" << endl;
 						}
 						else {
 							state = JAB_INIT;
-							cout << "Jab Init" << endl;
+							// cout << "Jab Init" << endl;
 							// If we want to also control the orientation of the punch (not currently recommended by William)
 							/*
 							robot->rotationInWorld(x_ori, "ra_link6");
@@ -438,7 +441,6 @@ int main() {
 				case DODGE:
 					// timer
 					dodge_time ++;
-					// cout << (x_pos_bag_end - x_pos).squaredNorm() << endl;
 
 					// update the models
 					if(counter % nsUpdateFrequency == 0){
@@ -449,12 +451,11 @@ int main() {
 					command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
 
 					// Checking distance to goal position did not work, so we're just timing out of the dodge
+										// cout << (x_pos_bag_end - x_pos).squaredNorm() << endl;
 					if(dodge_time > 1000){
 						state = NEUTRAL_INIT;
-						cout << "Neutral" << endl;
 					}
 					break;
-
 
 				case CROSS_INIT:
 					// cout << x_pos_bag_cm.transpose() << " " << x_pos_rh.transpose() << endl;
@@ -495,9 +496,9 @@ int main() {
 					command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handR + joint_task_torques;
 
 					// cout << (x_pos_bag_cm - x_pos_rh).squaredNorm() << endl;
-					if ((x_pos_bag_cm - x_pos_rh).squaredNorm() < 0.05){
+					if ((posori_task_handR->_desired_position - x_pos_rh).squaredNorm() < 0.02){
 						state = NEUTRAL_INIT;
-						cout << "Neutral Init" << endl;
+						// cout << "Neutral Init" << endl;
 					}
 					break;
 
@@ -531,7 +532,7 @@ int main() {
 					//update the models with set frequency
 					if(counter % nsUpdateFrequency == 0){
 						//cout << "rows: " << N_prec_feet.rows() << " columns: " << N_prec_feet.cols() << endl;
-						posori_task_handL->_desired_position - x_pos_bag_cm;
+						posori_task_handL->_desired_position = x_pos_bag_cm + Vector3d(0.1, 0, 0); // We want the jab to extend a bit further
 						posori_task_handL->updateTaskModel(N_prec_feet);
 						N_prec = posori_task_handL->_N;
 						//cout << "N_prec rows: " << N_prec.rows() << " columns: " << N_prec.cols() << endl;
@@ -544,19 +545,13 @@ int main() {
 					command_torques = posori_task_torques_footR + posori_task_torques_footL + posori_task_torques_handL + joint_task_torques;
 
 					// cout << (x_pos_bag_cm- x_pos_lh).squaredNorm() << endl;
-					if ((x_pos_bag_cm- x_pos_lh).squaredNorm() < 0.05){
+					if ((posori_task_handL->_desired_position - x_pos_lh).squaredNorm() < 0.02){
 						state = NEUTRAL_INIT;
-						cout << "Neutral Init" << endl;
+						// cout << "Neutral Init" << endl;
 					}
 					break;
 
 				}
-
-			// PUNCHING BAG //
-			// if needed, read bag state from redis, like so:
-			// robot->_q = redis_client.getEigenMatrixJSON(JOINT_ANGLES_KEY);
-
-			bag->updateModel();
 
 			// test tracking foot position with only joint task torques to choose posori targets
 			Vector3d x_pos_rf;
@@ -578,7 +573,6 @@ int main() {
 
 			// send to redis
 			redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
-			// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, bag_torques);
 
 			// ask for next simulation loop
 			fSimulationLoopDone = false;
@@ -642,7 +636,7 @@ void orthodox_posture(VectorXd& q_desired) {
 	q_desired[19] = M_PI/6;
 	q_desired[20] = M_PI/6;
 	q_desired[21] = 0;
-	q_desired[22] = 3*M_PI/4;;
+	q_desired[22] = 3*M_PI/4;
 	q_desired[23] = 0;
 	q_desired[24] = 0;
 
@@ -650,7 +644,7 @@ void orthodox_posture(VectorXd& q_desired) {
 	q_desired[25] = M_PI/6;
 	q_desired[26] = M_PI/6;
 	q_desired[27] = 0;
-	q_desired[28] = 3*M_PI/4;;
+	q_desired[28] = 3*M_PI/4;
 	q_desired[29] = 0;
 	q_desired[30] = 0;
 
@@ -709,7 +703,7 @@ void cross_posture(VectorXd& q_desired) {
 	q_desired[17] = 0;
 
 	// Trunk
-	q_desired[18] = 0;
+	q_desired[18] = M_PI/12;
 
 	// Right Arm
 	q_desired[19] = M_PI/2;
@@ -755,7 +749,7 @@ void jab_posture(VectorXd& q_desired) {
 	q_desired[17] = 0;
 
 	// Trunk
-	q_desired[18] = -M_PI/6;
+	q_desired[18] = -M_PI/4;
 
 	// Right Arm
 	q_desired[19] = M_PI/6;
@@ -767,11 +761,11 @@ void jab_posture(VectorXd& q_desired) {
 
 	// Left Arm
 	q_desired[25] = M_PI/2;
-	q_desired[26] = M_PI/4;
+	q_desired[26] = M_PI/6; // M_PI/4;
 	q_desired[27] = -M_PI/2;
-	q_desired[28] = M_PI/12;
+	q_desired[28] = M_PI/12; // 0
 	q_desired[29] = 0;
-	q_desired[30] = 0;
+	q_desired[30] = -M_PI/6;
 
 	// Head
 	q_desired[31] = M_PI/6;

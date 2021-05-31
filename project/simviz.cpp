@@ -23,7 +23,7 @@ bool fControllerLoopDone = true; // initialize as true for first loop
 using namespace std;
 using namespace Eigen;
 
-const int timeDilationFactor = 10;
+const int timeDilationFactor = 1000;
 
 const string world_file = "./resources/world.urdf";
 const string robot_file = "./resources/toro.urdf";
@@ -38,9 +38,9 @@ const string camera_name = "camera_fixed";
 // - write:
 const std::string JOINT_ANGLES_KEY = "sai2::cs225a::project::sensors::q";
 const std::string JOINT_VELOCITIES_KEY = "sai2::cs225a::project::sensors::dq";
+const std::string PUNCHING_BAG_ANGLES_KEY = "sai2::cs225a::project::sensors::bag";
 // - read
 const std::string JOINT_TORQUES_COMMANDED_KEY = "sai2::cs225a::project::actuators::fgc";
-// const std::string PUNCHING_BAG_COMMANDED_KEY = "sai2::cs225a::project::actuators::bag";
 // - read + write
 const std::string SIMULATION_LOOP_DONE_KEY = "cs225a::simulation::done";
 const std::string CONTROLLER_LOOP_DONE_KEY = "cs225a::controller::done";
@@ -100,7 +100,7 @@ int main() {
 								* AngleAxisd(0.0, Vector3d::UnitY())
 								* AngleAxisd(M_PI/2, Vector3d::UnitX());
 	Affine3d T_world_bag = Affine3d::Identity();
-	T_world_bag.translation() = Vector3d(0.75, 0, 0.82);
+	T_world_bag.translation() = Vector3d(0.8, 0, 0.82);
 	T_world_bag.linear() = R_world_bag;
 
 	auto bag = new Sai2Model::Sai2Model(bag_file, false, T_world_bag);
@@ -163,7 +163,7 @@ int main() {
 	// init redis client values
 	redis_client.setEigenMatrixJSON(JOINT_ANGLES_KEY, robot->_q);
 	redis_client.setEigenMatrixJSON(JOINT_VELOCITIES_KEY, robot->_dq);
-	// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, //add correct variable here);
+	redis_client.setEigenMatrixJSON(PUNCHING_BAG_ANGLES_KEY, bag->_q);
 	redis_client.set(SIMULATION_LOOP_DONE_KEY, bool_to_string(fSimulationLoopDone));
 	redis_client.set(CONTROLLER_LOOP_DONE_KEY, bool_to_string(fControllerLoopDone));
 
@@ -299,10 +299,10 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 
 	int dof = robot->dof();
 	VectorXd command_torques = VectorXd::Zero(dof);
-	VectorXd bag_torques = VectorXd::Zero(3);
+	VectorXd bag_q = VectorXd::Zero(3);
 
 	redis_client.setEigenMatrixJSON(JOINT_TORQUES_COMMANDED_KEY, command_torques);
-	// redis_client.setEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY, bag_torques);
+	redis_client.setEigenMatrixJSON(PUNCHING_BAG_ANGLES_KEY, bag_q);
 
 	// create a timer
 	LoopTimer timer;
@@ -323,7 +323,7 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 	ui_force_command_torques.setZero();
 
 	// setup redis client data container for pipeset (batch write)
-	std::vector<std::pair<std::string, std::string>> redis_data(5);  // set with the number of keys to write
+	std::vector<std::pair<std::string, std::string>> redis_data(6);  // set with the number of keys to write
 
 	unsigned long long counter = 0;
 
@@ -343,7 +343,6 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 			else {
 				command_torques.setZero();
 			}
-			// bag_torques = redis_client.getEigenMatrixJSON(PUNCHING_BAG_COMMANDED_KEY);
 
 			ui_force_widget->getUIForce(ui_force);
 			ui_force_widget->getUIJointTorques(ui_force_command_torques);
@@ -380,8 +379,9 @@ void simulation(Sai2Model::Sai2Model* robot, Sai2Model::Sai2Model* bag, Simulati
 			redis_data.at(0) = std::pair<string, string>(JOINT_TORQUES_COMMANDED_KEY, redis_client.encodeEigenMatrixJSON(command_torques));
 			redis_data.at(1) = std::pair<string, string>(JOINT_ANGLES_KEY, redis_client.encodeEigenMatrixJSON(robot->_q));
 			redis_data.at(2) = std::pair<string, string>(JOINT_VELOCITIES_KEY, redis_client.encodeEigenMatrixJSON(robot->_dq));
-			redis_data.at(3) = std::pair<string, string>(SIMULATION_LOOP_DONE_KEY, bool_to_string(fSimulationLoopDone));
-			redis_data.at(4) = std::pair<string, string>(CONTROLLER_LOOP_DONE_KEY, bool_to_string(fControllerLoopDone)); // ask for next control loop
+			redis_data.at(3) = std::pair<string, string>(PUNCHING_BAG_ANGLES_KEY, redis_client.encodeEigenMatrixJSON(bag->_q));
+			redis_data.at(4) = std::pair<string, string>(SIMULATION_LOOP_DONE_KEY, bool_to_string(fSimulationLoopDone));
+			redis_data.at(5) = std::pair<string, string>(CONTROLLER_LOOP_DONE_KEY, bool_to_string(fControllerLoopDone)); // ask for next control loop
 
 			redis_client.pipeset(redis_data);
 
