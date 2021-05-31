@@ -133,8 +133,7 @@ int main() {
 
 	#ifdef USING_OTG
 		posori_task_footR->_use_interpolation_flag = false;
-	//#else
-		posori_task_footR->_use_velocity_saturation_flag = true;
+		posori_task_footR->_use_velocity_saturation_flag = false;
 	#endif
 
 	VectorXd posori_task_torques_footR = VectorXd::Zero(dof);
@@ -160,8 +159,7 @@ int main() {
 
 	#ifdef USING_OTG
 		posori_task_footL->_use_interpolation_flag = false;
-	//#else
-		posori_task_footL->_use_velocity_saturation_flag = true;
+		posori_task_footL->_use_velocity_saturation_flag = false;
 	#endif
 
 	VectorXd posori_task_torques_footL = VectorXd::Zero(dof);
@@ -260,8 +258,9 @@ int main() {
 
 	#ifdef USING_OTG
 		joint_task->_use_interpolation_flag = false;
-	//#else
 		joint_task->_use_velocity_saturation_flag = true;
+		// joint_task->_otg->setMaxAcceleration(3);
+		// joint_task->_otg->setMaxVelocity(6);
 	#endif
 
 	VectorXd joint_task_torques = VectorXd::Zero(dof);
@@ -274,6 +273,7 @@ int main() {
 
 	// Initial state //
 	int state = DODGE_INIT;
+	int state_time = -600; // Hack to make the first dodge longer than the rest
 	// gravity vector
 	VectorXd g(dof);
 
@@ -286,6 +286,7 @@ int main() {
 	Vector3d x_pos_lh;
 	Vector3d x_pos_bag_cm;
 	Vector3d x_pos_bag_end;
+	Vector3d current_desired_pos;
 	Vector3d noise;
 	int randomPunch;
 
@@ -305,7 +306,7 @@ int main() {
 	double start_time = timer.elapsedTime(); // secs
 
 	unsigned long long counter = 0;
-	unsigned long long dodge_time = 0;
+	int state_timeout = 600;
 
 	runloop = true;
 	while (runloop) {
@@ -384,6 +385,14 @@ int main() {
 					break;
 
 				case NEUTRAL:
+				//timer
+				state_time++;
+
+				if(state_time > state_timeout) { // When recovering from a punch, we amp up the gains for a bit
+					joint_task->_kp = kp_joint;
+					joint_task->_kv = kv_joint;
+				}
+
 					// update the models
 					if(counter % nsUpdateFrequency == 0){
 						joint_task->updateTaskModel(N_prec_feet);
@@ -396,10 +405,13 @@ int main() {
 					// 0.6964 is our steady state - 0.255 is a sufficiently high noise level to trigger the dodge occasionally
 					if ((x_pos_bag_end - x_pos_hip_init).squaredNorm() < 0.6964 - 0.255){ // TODO: Play with this threshold when collisions are on.
 						state = DODGE_INIT;
+						// start timer
+						state_time = 0; // This needs to be set here or the beginning of the sim will break
 						// cout << "Dodge Init" << endl;
 					}
 
 					if ((robot->_q - q_desired).squaredNorm() < 0.04){
+						current_desired_pos = x_pos_bag_cm;
 						randomPunch = rand() % 2;
 						if (randomPunch == 0){
 							state = CROSS_INIT;
@@ -420,14 +432,15 @@ int main() {
 					break;
 
 				case DODGE_INIT:
-					// start timer
-					dodge_time = 0;
 
 					// Define dodge posture //
 					q_desired = q_init_desired;
 					dodge_posture(q_desired);
 
 					// Generate command torques
+					joint_task->_kp = kp_joint+100;
+					joint_task->_kv = kv_joint-50;
+
 					joint_task->_desired_position = q_desired;
 					joint_task->updateTaskModel(N_prec_feet);
 					joint_task->computeTorques(joint_task_torques);
@@ -440,7 +453,7 @@ int main() {
 
 				case DODGE:
 					// timer
-					dodge_time ++;
+					state_time ++;
 
 					// update the models
 					if(counter % nsUpdateFrequency == 0){
@@ -452,8 +465,10 @@ int main() {
 
 					// Checking distance to goal position did not work, so we're just timing out of the dodge
 										// cout << (x_pos_bag_end - x_pos).squaredNorm() << endl;
-					if(dodge_time > 1000){
+					if(state_time > state_timeout){
 						state = NEUTRAL_INIT;
+						joint_task->_kp = kp_joint;
+						joint_task->_kv = kv_joint;
 					}
 					break;
 
@@ -461,7 +476,7 @@ int main() {
 					// cout << x_pos_bag_cm.transpose() << " " << x_pos_rh.transpose() << endl;
 
 					// Update posori task
-					posori_task_handR->_desired_position = x_pos_bag_cm;
+					posori_task_handR->_desired_position = current_desired_pos;
 
 					// Define cross posture
 					q_desired = q_init_desired;
@@ -484,7 +499,7 @@ int main() {
 				case CROSS:
 					// update the models
 					if(counter % nsUpdateFrequency == 0){
-						posori_task_handR->_desired_position = x_pos_bag_cm;
+						posori_task_handR->_desired_position = current_desired_pos;
 						posori_task_handR->updateTaskModel(N_prec_feet);
 						N_prec = posori_task_handR->_N;
 						joint_task->updateTaskModel(N_prec);
@@ -497,8 +512,10 @@ int main() {
 
 					// cout << (x_pos_bag_cm - x_pos_rh).squaredNorm() << endl;
 					if ((posori_task_handR->_desired_position - x_pos_rh).squaredNorm() < 0.02){
+						joint_task->_kp = kp_joint+100; // increase gains to recover faster
+						joint_task->_kv = kv_joint-50;
 						state = NEUTRAL_INIT;
-						// cout << "Neutral Init" << endl;
+						state_time = 0;
 					}
 					break;
 
@@ -506,7 +523,8 @@ int main() {
 					// cout << x_pos_bag_cm.transpose() << " " << x_pos_lh.transpose() << endl;
 
 					// Update posori task
-					posori_task_handL->_desired_position = x_pos_bag_cm;
+					posori_task_handL->_desired_position = current_desired_pos;
+					// save desired position
 
 					// Define cross posture
 					q_desired = q_init_desired;
@@ -532,7 +550,7 @@ int main() {
 					//update the models with set frequency
 					if(counter % nsUpdateFrequency == 0){
 						//cout << "rows: " << N_prec_feet.rows() << " columns: " << N_prec_feet.cols() << endl;
-						posori_task_handL->_desired_position = x_pos_bag_cm + Vector3d(0.1, 0, 0); // We want the jab to extend a bit further
+						posori_task_handL->_desired_position = current_desired_pos;
 						posori_task_handL->updateTaskModel(N_prec_feet);
 						N_prec = posori_task_handL->_N;
 						//cout << "N_prec rows: " << N_prec.rows() << " columns: " << N_prec.cols() << endl;
@@ -546,12 +564,14 @@ int main() {
 
 					// cout << (x_pos_bag_cm- x_pos_lh).squaredNorm() << endl;
 					if ((posori_task_handL->_desired_position - x_pos_lh).squaredNorm() < 0.02){
+						joint_task->_kp = kp_joint+100; // Increase gains to recover faster
+						joint_task->_kv = kv_joint-50;
 						state = NEUTRAL_INIT;
-						// cout << "Neutral Init" << endl;
+						state_time = 0;
 					}
 					break;
 
-				}
+			}
 
 			// test tracking foot position with only joint task torques to choose posori targets
 			Vector3d x_pos_rf;
@@ -638,18 +658,18 @@ void orthodox_posture(VectorXd& q_desired) {
 	q_desired[21] = 0;
 	q_desired[22] = 3*M_PI/4;
 	q_desired[23] = 0;
-	q_desired[24] = 0;
+	// q_desired[24] = 0; // Fixed this joint
 
 	// Left Arm
+	q_desired[24] = M_PI/6;
 	q_desired[25] = M_PI/6;
-	q_desired[26] = M_PI/6;
-	q_desired[27] = 0;
-	q_desired[28] = 3*M_PI/4;
-	q_desired[29] = 0;
-	q_desired[30] = 0;
+	q_desired[26] = 0;
+	q_desired[27] = 3*M_PI/4;
+	q_desired[28] = 0;
+	// q_desired[30] = 0;
 
 	// Head
-	q_desired[31] = M_PI/6;
+	q_desired[29] = M_PI/6;
 }
 
 void dodge_posture(VectorXd& q_desired) {
@@ -711,18 +731,18 @@ void cross_posture(VectorXd& q_desired) {
 	q_desired[21] = -M_PI/3;
 	q_desired[22] = M_PI/12;
 	q_desired[23] = 0;
-	q_desired[24] = 0;
+	// q_desired[24] = 0; // fixed this joint
 
 	// Left Arm
+	q_desired[24] = M_PI/6;
 	q_desired[25] = M_PI/6;
-	q_desired[26] = M_PI/6;
-	q_desired[27] = 0;
-	q_desired[28] = 3*M_PI/4;;
-	q_desired[29] = 0;
-	q_desired[30] = 0;
+	q_desired[26] = 0;
+	q_desired[27] = 3*M_PI/4;;
+	q_desired[28] = 0;
+	// q_desired[30] = 0; // fixed this joint
 
 	// Head
-	q_desired[31] = M_PI/6;
+	q_desired[29] = M_PI/6;
 
 }
 
@@ -757,18 +777,18 @@ void jab_posture(VectorXd& q_desired) {
 	q_desired[22] = 0;
 	q_desired[22] = 3*M_PI/4;;
 	q_desired[23] = 0;
-	q_desired[24] = 0;
+	// q_desired[24] = 0; // fixed this joint
 
 	// Left Arm
-	q_desired[25] = M_PI/2;
-	q_desired[26] = M_PI/6; // M_PI/4;
-	q_desired[27] = -M_PI/2;
-	q_desired[28] = M_PI/12; // 0
-	q_desired[29] = 0;
-	q_desired[30] = -M_PI/6;
+	q_desired[24] = M_PI/2;
+	q_desired[25] = M_PI/6; // M_PI/4;
+	q_desired[26] = -M_PI/2;
+	q_desired[27] = M_PI/12; // 0
+	q_desired[28] = 0;
+	// q_desired[30] = M_PI/6; // fixed this joint
 
 	// Head
-	q_desired[31] = M_PI/6;
+	q_desired[29] = M_PI/6;
 }
 
 

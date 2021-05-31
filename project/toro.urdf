@@ -797,20 +797,27 @@
         </visual>
         <collision>
             <!-- <origin  xyz="0 0 0 "/> -->
-            <origin xyz="0.0000000000  0.0000000000 -0.0560000000" rpy="-3.1415926536  0.0000000000 -1.5707963268" />
+            <origin xyz="0.0000000000 0.0000000000 0.0560000000" rpy="-3.1415926536  0.0000000000  -1.5707963268" />
             <geometry>
-                <!-- <capsule a="0 -0.001 0.053" b="0 0.002 0.050" radius="0.0570055"/> -->
-                <mesh filename="../../../model/toro/meshes/obj/wrist_cap.stl.obj"/>
+                <sphere radius="0.03"/>
+                <!-- <mesh filename="../../../model/toro/meshes/obj/wrist_cap.stl.obj"/> -->
             </geometry>
         </collision>
+        <!-- <collision>
+            <origin xyz="0.0000000000  0.0000000000 -0.0560000000" rpy="-3.1415926536  0.0000000000 -1.5707963268" />
+            <geometry>
+                <capsule a="0 -0.001 0.053" b="0 0.002 0.050" radius="0.0570055"/>
+                <mesh filename="../../../model/toro/meshes/obj/wrist_cap.stl.obj"/>
+            </geometry>
+        </collision> -->
     </link>
 
-    <joint name="j19" type="revolute">
+    <joint name="j19" type="fixed">
         <!-- <origin xyz="0.0140000000 0.0000000000 -0.0560000000" rpy="0 0 0" /> -->
         <origin xyz="-0.0000000000 -0.0140000000  0.0560000000" rpy="0.0000000000 0.0000000000 0.0000000000" />
         <parent link="ra_link5"/>
         <child link="ra_link6"/>
-        <limit lower="-1.8326" upper="1.8326" effort="35" velocity="2.0944" />
+        <limit lower="-1.8326" upper="1.8326" effort="35" velocity="2.0944"/>
         <!-- <axis xyz="-1 0 0"/> -->
         <axis xyz="0 1 0"/>
     </joint>
@@ -983,9 +990,6 @@
         <axis xyz="0 1 0"/>
     </joint>
 
-
-
-
       <link name="la_link6">
         <tcp number="3"/>
         <inertial>
@@ -1011,15 +1015,22 @@
         </visual>
         <collision>
             <!-- <origin  xyz="0 0 0 "/> -->
-            <origin xyz="0.0000000000 0.0560000000 0.0000000000" rpy="-1.5707963268  0.0000000000  0.0000000000" />
+            <origin xyz="0.0000000000 -0.0560000000 0.0000000000" rpy="-1.5707963268  0.0000000000  0.0000000000" />
             <geometry>
-                <!-- <capsule a="0 -0.001 0.053" b="0 0.002 0.050" radius="0.0570055"/> -->
-                <mesh filename="../../../model/toro/meshes/obj/wrist_cap.stl.obj"/>
+                <sphere radius="0.03"/>
+                <!-- <mesh filename="../../../model/toro/meshes/obj/wrist_cap.stl.obj"/> -->
             </geometry>
         </collision>
+        <!-- <collision>
+            <origin xyz="0.0000000000 0.0560000000 0.0000000000" rpy="-1.5707963268  0.0000000000  0.0000000000" />
+            <geometry>
+                <capsule a="0 -0.001 0.053" b="0 0.002 0.050" radius="0.0570055"/>
+                <mesh filename="../../../model/toro/meshes/obj/wrist_cap.stl.obj"/>
+            </geometry>
+        </collision> -->
     </link>
 
-    <joint name="j25" type="revolute">
+    <joint name="j25" type="fixed">
         <!-- <origin xyz="0.0140000000 -0.0000000000 -0.0560000000" rpy="0 0 0" /> -->
         <origin xyz="0.0140000000 -0.0560000000 -0.0000000000" rpy="0.0000000000 0.0000000000 0.0000000000" />
         <parent link="la_link5"/>

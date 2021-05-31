@@ -75,13 +75,14 @@
         </material>
       </visual> -->
 
-      <!-- Suggestions: Use cylinder primitive  -->
       <!-- http://wiki.ros.org/urdf/Tutorials/Adding%20Physical%20and%20Collision%20Properties%20to%20a%20URDF%20Model -->
-      <!-- <collision>
+      <collision>
+        <origin xyz="0 -1.2 0" rpy="-1.57079632679 0 0" />
         <geometry>
-          <mesh filename="../../../model/boxing_ring/meshes/collision/punchbag_collision.obj"/>
+          <cylinder length="0.8" radius="0.14" />
+          <!-- <mesh filename="../../../model/boxing_ring/meshes/collision/punchbag_collision.obj"/> -->
         </geometry>
-      </collision> -->
+      </collision>
     </link>
 
     <joint name="joint1" type="revolute">
