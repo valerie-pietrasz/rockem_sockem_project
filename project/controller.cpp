@@ -183,8 +183,10 @@ int main() {
 
 	#ifdef USING_OTG
 		posori_task_handR->_use_interpolation_flag = false;
-	//#else
-		posori_task_handR->_use_velocity_saturation_flag = true;
+		posori_task_handR->_use_velocity_saturation_flag = false;
+		// posori_task_handR->_saturation_velocity = 2;
+		// posori_task_handR->_otg->setMaxAcceleration(3);
+		// posori_task_handR->_otg->setMaxVelocity(3);
 	#endif
 
 	VectorXd posori_task_torques_handR = VectorXd::Zero(dof);
@@ -199,9 +201,6 @@ int main() {
 	robot->rotationInWorld(x_ori, control_link);
 	// posori_task_handR->_desired_position = x_pos + Vector3d(0.5, -0.2, 0.8);
 	posori_task_handR->_desired_position = x_pos_hip_init + Vector3d(0.1, -0.1, 0.1);
-	// posori_task_handR->_desired_orientation = AngleAxisd(M_PI/4, Vector3d::UnitZ()).toRotationMatrix() * x_ori;
-	// posori_task_handR->_desired_orientation = AngleAxisd(M_PI/2, Vector3d::UnitX()).toRotationMatrix() * \
-	 											AngleAxisd(-M_PI/2, Vector3d::UnitY()).toRotationMatrix() * x_ori;
 
 	// pose task for left hand
 	control_link = "la_link6";
@@ -228,9 +227,6 @@ int main() {
 	// posori_task_handL->_desired_position = x_pos + Vector3d(0.5, 0.2, 0.8);
 
 	posori_task_handL->_desired_position = x_pos_hip_init + Vector3d(1, 0.5, 0.5);
-	// posori_task_handL->_desired_orientation = AngleAxisd(-M_PI/4, Vector3d::UnitZ()).toRotationMatrix() * x_ori;
-	// posori_task_handR->_desired_orientation = AngleAxisd(M_PI/2, Vector3d::UnitX()).toRotationMatrix() * \
-	// 											AngleAxisd(-M_PI/2, Vector3d::UnitY()).toRotationMatrix() * x_ori;
 
 	// pose task for head
 	control_link = "neck_link2";
@@ -255,8 +251,6 @@ int main() {
 	robot->rotationInWorld(x_ori, control_link);
 	posori_task_head->_desired_position = x_pos;
 	posori_task_head->_desired_orientation = x_ori;
-	// posori_task_handR->_desired_orientation = AngleAxisd(M_PI/2, Vector3d::UnitX()).toRotationMatrix() * \
-	// 											AngleAxisd(-M_PI/2, Vector3d::UnitY()).toRotationMatrix() * x_ori;
 
 	// joint task
 	auto joint_task = new Sai2Primitives::JointTask(robot);
@@ -273,13 +267,12 @@ int main() {
 	joint_task->_kv = kv_joint;
 
 	// Record initial joint posture
-
 	VectorXd q_init_desired = robot->_q;
 	VectorXd q_desired = q_init_desired;
 
-	//Initial state//
-	int state = NEUTRAL_INIT;
-	cout << "Neutral Init" << endl;
+	// Initial state //
+	int state = DODGE_INIT;
+	cout << "Dodge Init" << endl;
 	// gravity vector
 	VectorXd g(dof);
 
@@ -295,14 +288,12 @@ int main() {
 	Vector3d noise;
 	int randomPunch;
 
-
-	//white noise generator
-	double noise_magnitude = .05; //change
+	// white noise generator
+	double noise_magnitude = .05; // change
 	const double mean = 0.0;
-    const double stddev = noise_magnitude;  // tune based on your system 
-    std::default_random_engine generator;
-    std::normal_distribution<double> dist(mean, stddev);
-	
+  const double stddev = noise_magnitude;  // tune based on your system
+  std::default_random_engine generator;
+  std::normal_distribution<double> dist(mean, stddev);
 
 	// create a loop timer
 	double control_freq = 1000;
@@ -341,7 +332,6 @@ int main() {
 
 			robot->positionInWorld(x_pos_rh, "ra_link6");
 			robot->positionInWorld(x_pos_lh, "la_link6");
-			robot->positionInWorld(x_pos_lf, "LL_foot");
 
 			// set N_prec and calculate torques to fix feet
 			if(counter % nsUpdateFrequency == 0){
@@ -370,8 +360,8 @@ int main() {
 			MatrixXd jointTaskProjection = MatrixXd::Identity(dof, dof);
 			jointTaskProjection(28, 28) = 0; // left elbow
 
-			cout << (x_pos_bag_end - x_pos_lf).squaredNorm() << endl;
-			cout << "noise" << '\t' << noise << endl;
+			cout << (x_pos_bag_end - x_pos_hip_init).squaredNorm() << endl;
+			// cout << "noise" << '\t' << noise.transpose() << endl;
 
 			switch(state){
 
@@ -400,9 +390,8 @@ int main() {
 					joint_task->computeTorques(joint_task_torques);
 					command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
 
-					//cout << (x_pos_bag_end - x_pos_lf).squaredNorm() << endl;
-
-					if ((x_pos_bag_end - x_pos_lf).squaredNorm() < 0.526 - .2){ //.526 is our steady state
+					// 0.8989 is our steady state - 0.2 is a sufficiently high noise level to trigger the dodge occasionally
+					if ((x_pos_bag_end - x_pos_hip_init).squaredNorm() < 0.8989 - 0.3){
 						state = DODGE_INIT;
 						cout << "Dodge Init" << endl;
 					}
@@ -447,10 +436,9 @@ int main() {
 					break;
 
 				case DODGE:
-					//timer
+					// timer
 					dodge_time ++;
-					cout << dodge_time << endl;
-					//cout << (x_pos_bag_end - x_pos_lf).squaredNorm() << endl;
+					// cout << (x_pos_bag_end - x_pos).squaredNorm() << endl;
 
 					// update the models
 					if(counter % nsUpdateFrequency == 0){
@@ -460,12 +448,7 @@ int main() {
 					joint_task->computeTorques(joint_task_torques);
 					command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
 
-					// cout << (robot->_q - q_desired).squaredNorm() << endl;
-					// if ((robot->_q - q_desired).squaredNorm() < 0.4) {
-					// 	state = NEUTRAL_INIT;
-					// 	cout << "Neutral" << endl;
-					// }
-
+					// Checking distance to goal position did not work, so we're just timing out of the dodge
 					if(dodge_time > 1000){
 						state = NEUTRAL_INIT;
 						cout << "Neutral" << endl;
@@ -498,7 +481,7 @@ int main() {
 					break;
 
 				case CROSS:
-					//update the models
+					// update the models
 					if(counter % nsUpdateFrequency == 0){
 						posori_task_handR->_desired_position = x_pos_bag_cm;
 						posori_task_handR->updateTaskModel(N_prec_feet);
