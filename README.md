@@ -7,12 +7,12 @@ Project starter code
 - project_code
   - controller.cpp
   - simviz.cpp
-      - might want to turn off right-click to apply force
   - toro.urdf
-      - everything connects to the hip!
+  - punching_bag.urdf
+  - env.urdf
   - world.urdf
 - models
   - toro
       - contains reference files for toro model
   - boxing_ring
-      - will contain reference files for the boxing environment
+      - contains reference files for the punching bag and boxing ring

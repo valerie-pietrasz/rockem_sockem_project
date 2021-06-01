@@ -23,7 +23,7 @@ bool fControllerLoopDone = true; // initialize as true for first loop
 using namespace std;
 using namespace Eigen;
 
-const int timeDilationFactor = 1000;
+const int timeDilationFactor = 10;
 
 const string world_file = "./resources/world.urdf";
 const string robot_file = "./resources/toro.urdf";
