@@ -402,8 +402,8 @@ int main() {
 					command_torques = posori_task_torques_footR + posori_task_torques_footL + joint_task_torques;
 
 					// cout << (x_pos_bag_end - x_pos_hip_init).squaredNorm() << endl;
-					// 0.6964 is our steady state - 0.255 is a sufficiently high noise level to trigger the dodge occasionally
-					if ((x_pos_bag_end - x_pos_hip_init).squaredNorm() < 0.6964 - 0.255){ // TODO: Play with this threshold when collisions are on.
+					// 0.6964 is our steady state
+					if ((x_pos_bag_end - x_pos_hip_init).squaredNorm() < 0.6964 - 0.29){
 						state = DODGE_INIT;
 						// start timer
 						state_time = 0; // This needs to be set here or the beginning of the sim will break
